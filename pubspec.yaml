@@ -1,0 +1,11 @@
+name: rescate_workspace
+environment:
+  sdk: ^3.11.4
+
+workspace:
+  - apps/rescate_app
+  - packages/ai_inference
+  - packages/audio_voice
+  - packages/offline_data
+  - packages/p2p_mesh
+  - packages/security_crypto

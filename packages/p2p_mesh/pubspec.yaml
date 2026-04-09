@@ -1,0 +1,21 @@
+name: p2p_mesh
+description: Module 4 - P2P Mesh Connectivity (Bluetooth/Wi-Fi Direct, Micro-payloads)
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.4
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Add Nearby/Multipeer dependencies here later
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+resolution: workspace
+
