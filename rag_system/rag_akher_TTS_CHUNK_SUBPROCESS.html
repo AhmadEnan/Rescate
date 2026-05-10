@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical RAG — Voice Ready</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0010;--bg2:#0f0018;--surface:#140020;--surface2:#1c002e;
+  --border:#3d0060;--border2:#5a0080;
+  --pink:#ff2d78;--pink-glow:#ff2d7855;--pink-dim:#ff2d7818;
+  --purple:#bf00ff;--purple-glow:#bf00ff55;--purple-dim:#bf00ff14;
+  --text:#f0d8ff;--muted:#8a6aaa;--muted2:#4a3060;
+  --green:#00ff88;--yellow:#ffcc00;
+  --font:'Tajawal',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:var(--font);background:var(--bg);color:var(--text);display:flex;flex-direction:column;}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 55% 45% at 15% 15%,#2a004433 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 85% 85%,#1a002244 0%,transparent 60%);pointer-events:none;z-index:0;}
+body>*{position:relative;z-index:1;}
+
+header{background:linear-gradient(90deg,#0e001e,#170030,#0e001e);border-bottom:1px solid var(--border);padding:11px 18px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 0 28px #bf00ff1a;}
+.logo{display:flex;align-items:center;gap:11px;}
+.logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--pink),var(--purple));border-radius:9px;display:grid;place-items:center;font-size:17px;box-shadow:0 0 14px var(--pink-glow),0 0 28px var(--purple-glow);}
+.logo-name{font-size:14px;font-weight:700;background:linear-gradient(90deg,var(--pink),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.logo-sub{font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:1px;-webkit-text-fill-color:var(--muted);}
+.status-row{display:flex;gap:10px;align-items:center;}
+.status-pill{display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:4px 10px;font-size:11px;font-family:var(--mono);color:var(--muted);}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);flex-shrink:0;}
+.dot.ok{background:var(--green);box-shadow:0 0 8px #00ff8888;}
+.dot.warn{background:var(--yellow);box-shadow:0 0 8px #ffcc0088;animation:blink 1.5s infinite;}
+.dot.err{background:var(--pink);box-shadow:0 0 8px var(--pink-glow);animation:blink 1s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+.config-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:6px 18px;display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);font-family:var(--mono);flex-shrink:0;flex-wrap:wrap;}
+.config-bar label{white-space:nowrap;}
+.cfg-inp{background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 7px;outline:none;}
+.cfg-inp:focus{border-color:var(--purple);}
+#cfg-url{flex:1;min-width:160px;}
+#cfg-topk,#cfg-temp,#cfg-maxt{width:52px;}
+
+.layout{flex:1;display:flex;overflow:hidden;min-height:0;}
+.chat-col{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;}
+#messages{flex:1;overflow-y:auto;padding:20px 18px;display:flex;flex-direction:column;gap:18px;scroll-behavior:smooth;}
+#messages::-webkit-scrollbar{width:4px;}
+#messages::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+.msg{display:flex;gap:10px;animation:up .22s ease;max-width:100%;}
+@keyframes up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.msg.user{flex-direction:row-reverse;}
+.avatar{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-size:15px;flex-shrink:0;margin-top:2px;}
+.msg.user .avatar{background:linear-gradient(135deg,#300050,#500080);border:1px solid var(--purple);box-shadow:0 0 10px var(--purple-glow);}
+.msg.ai   .avatar{background:linear-gradient(135deg,#400020,#800040);border:1px solid var(--pink);box-shadow:0 0 10px var(--pink-glow);}
+.bubble{padding:12px 15px;border-radius:13px;font-size:14.5px;line-height:1.75;max-width:78%;word-break:break-word;white-space:pre-wrap;}
+.msg.user .bubble{background:var(--surface2);border:1px solid var(--border2);border-top-right-radius:3px;box-shadow:0 0 18px var(--purple-dim);}
+.msg.ai   .bubble{background:#0d001c;border:1px solid var(--border);border-top-left-radius:3px;box-shadow:0 0 18px var(--pink-dim);}
+.bubble[dir=rtl]{text-align:right;direction:rtl;}
+.bubble[dir=ltr]{text-align:left;direction:ltr;}
+.sys-msg{justify-content:center;}
+.sys-msg .bubble{background:transparent;border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--muted);text-align:center;max-width:92%;padding:7px 14px;}
+.err-msg .bubble{border-color:#ff2d7860;color:#ff8ab0;background:#1a000a;}
+
+.dots{display:flex;gap:5px;align-items:center;padding:3px 0;}
+.dots span{width:7px;height:7px;border-radius:50%;background:var(--pink);box-shadow:0 0 7px var(--pink-glow);animation:bounce 1.1s infinite;}
+.dots span:nth-child(2){animation-delay:.17s;background:var(--purple);box-shadow:0 0 7px var(--purple-glow);}
+.dots span:nth-child(3){animation-delay:.34s;}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
+
+.input-bar{background:linear-gradient(0deg,#0f001e,#090013);border-top:1px solid var(--border);padding:12px 16px;display:flex;gap:9px;align-items:flex-end;flex-shrink:0;box-shadow:0 -8px 30px #bf00ff0e;}
+#question{flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:11px;color:var(--text);font-family:var(--font);font-size:14.5px;line-height:1.6;padding:10px 14px;resize:none;min-height:44px;max-height:140px;overflow-y:auto;outline:none;transition:border-color .2s,box-shadow .2s;direction:auto;}
+#question:focus{border-color:var(--purple);box-shadow:0 0 0 2px var(--purple-dim),0 0 18px var(--purple-glow);}
+#question::placeholder{color:var(--muted2);}
+.send-btn{width:44px;height:44px;border:none;border-radius:11px;font-size:18px;cursor:pointer;display:grid;place-items:center;flex-shrink:0;transition:all .15s;background:linear-gradient(135deg,var(--pink),var(--purple));box-shadow:0 0 14px var(--pink-glow),0 0 28px var(--purple-glow);color:#fff;}
+.send-btn:hover{transform:scale(1.07);}
+.send-btn:active{transform:scale(.93);}
+.send-btn:disabled{background:var(--surface2);box-shadow:none;color:var(--muted2);cursor:not-allowed;transform:none;}
+.icon-btn{width:44px;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:11px;color:var(--muted);font-size:15px;cursor:pointer;display:grid;place-items:center;transition:all .15s;}
+.icon-btn:hover{border-color:var(--pink);color:var(--pink);}
+
+.right-panel{width:320px;min-width:260px;border-left:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg2);flex-shrink:0;overflow:hidden;}
+.tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surface);}
+.tab-btn{flex:1;padding:9px 3px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--font);font-size:11.5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .15s;}
+.tab-btn .ti{font-size:14px;}
+.tab-btn:hover{color:var(--text);}
+.tab-btn.active{color:var(--pink);border-bottom-color:var(--pink);background:var(--pink-dim);}
+.tab-panel{display:none;flex:1;overflow-y:auto;padding:14px;flex-direction:column;gap:10px;}
+.tab-panel.active{display:flex;}
+.tab-panel::-webkit-scrollbar{width:3px;}
+.tab-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+.tok-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.tok-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px;text-align:center;}
+.tok-card .val{font-size:20px;font-family:var(--mono);font-weight:500;background:linear-gradient(90deg,var(--pink),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.tok-card .lbl{font-size:9.5px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.08em;}
+.tok-session{background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:12px;}
+.tok-session h4{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:9px;}
+.tok-row{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--muted);}
+.tok-row:last-child{border-bottom:none;}
+.tok-row span:last-child{font-family:var(--mono);color:var(--text);}
+
+/* speed hint box */
+.hint-box{background:#0d001a;border:1px solid #3d006033;border-radius:8px;padding:10px 12px;font-size:11px;color:var(--muted);line-height:1.6;}
+.hint-box b{color:var(--yellow);}
+
+.think-box{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:13px;font-size:12.5px;font-family:var(--mono);color:var(--muted);line-height:1.6;white-space:pre-wrap;word-break:break-word;min-height:80px;}
+.think-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--pink);margin-bottom:8px;font-family:var(--font);font-weight:700;}
+.empty-note{color:var(--muted2);font-style:italic;text-align:center;padding:28px 0;font-size:12.5px;font-family:var(--font);}
+
+.chunk-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:12px;font-size:12.5px;line-height:1.6;color:var(--muted);word-break:break-word;}
+.chunk-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;gap:5px;}
+.csrc{font-size:10.5px;font-family:var(--mono);color:var(--purple);background:var(--purple-dim);border:1px solid #5a008035;border-radius:4px;padding:2px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:63%;}
+.cscr{font-size:10px;font-family:var(--mono);color:var(--pink);background:var(--pink-dim);border:1px solid #ff2d7835;border-radius:4px;padding:2px 5px;white-space:nowrap;}
+.ctext{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;}
+.expand-btn{background:none;border:none;color:var(--purple);font-size:10.5px;cursor:pointer;margin-top:4px;padding:0;}
+.expand-btn:hover{text-decoration:underline;}
+
+/* llama status banner */
+#llama-banner{display:none;background:#1a0008;border-bottom:1px solid #ff2d7840;padding:6px 18px;font-size:11px;color:#ff8ab0;font-family:var(--mono);flex-shrink:0;}
+#llama-banner.show{display:block;}
+
+.mic-btn{width:44px;height:44px;background:var(--surface);border:1px solid var(--border2);border-radius:11px;color:var(--muted);font-size:17px;cursor:pointer;display:grid;place-items:center;transition:all .15s;position:relative;}
+.mic-btn:hover{border-color:var(--green);color:var(--green);}
+.mic-btn.recording{border-color:var(--pink);color:#fff;background:linear-gradient(135deg,#600020,#900050);box-shadow:0 0 16px var(--pink-glow);animation:pulseMic 1s infinite;}
+@keyframes pulseMic{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.voice-chip{font-size:11px;font-family:var(--mono);color:var(--green);background:#001a0d;border:1px solid #00ff8840;border-radius:8px;padding:5px 8px;margin-top:8px;display:inline-block;}
+.voice-mode{background:var(--surface);border:1px solid var(--border2);border-radius:9px;color:var(--text);font-family:var(--mono);font-size:11px;padding:0 6px;height:44px;outline:none;}
+.voice-mode:focus{border-color:var(--green);}
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🏥</div>
+    <div>
+      <div class="logo-name">Medical RAG Assistant</div>
+      <div class="logo-sub">Gemma · Offline · English / Arabic Voice · Arabic Piper TTS</div>
+    </div>
+  </div>
+  <div class="status-row">
+    <div class="status-pill">
+      <div class="dot" id="d-rag"></div>
+      <span id="l-rag">RAG …</span>
+    </div>
+    <div class="status-pill">
+      <div class="dot" id="d-llama"></div>
+      <span id="l-llama">llama …</span>
+    </div>
+  </div>
+</header>
+
+<!-- Banner shown when llama is down but RAG is up -->
+<div id="llama-banner">
+  ⚠ llama.cpp not detected on port 8080 — start it before sending questions.
+  &nbsp;Run: <b>llama-server.exe -m model.gguf --port 8080 --ctx-size 2048 --threads 4</b>
+</div>
+
+<div class="config-bar">
+  <label>RAG:</label>
+  <input class="cfg-inp" id="cfg-url" type="text" value="http://localhost:8081/ask">
+  <label>Voice:</label>
+  <input class="cfg-inp" id="cfg-voice-url" type="text" value="http://localhost:8081/voice" title="Voice upload endpoint">
+  <label>Chunks:</label><input class="cfg-inp" id="cfg-topk" type="number" value="5" min="1" max="20" title="Fewer chunks = faster response">
+  <label>Temp:</label><input class="cfg-inp" id="cfg-temp" type="number" value="0.05" min="0" max="1" step="0.05">
+  <label>Max tok:</label><input class="cfg-inp" id="cfg-maxt" type="number" value="350" min="50" max="2048" title="Lower = faster response">
+</div>
+
+<div class="layout">
+  <div class="chat-col">
+    <div id="messages">
+      <div class="msg sys-msg">
+        <div class="bubble">اكتب سؤالك بالعربية أو الإنجليزية — النظام يكتشف اللغة ويرد بها تلقائياً.<br>Type in Arabic or English — language is auto-detected.<br>Use 🎤 to speak. English and Arabic STT are supported. Arabic answer uses tts_arabic speaker 3 voice, with Piper fallback.</div>
+      </div>
+    </div>
+    <div class="input-bar">
+      <button class="icon-btn" onclick="clearChat()" title="Clear">🗑</button>
+      <select class="voice-mode" id="voice-mode" title="Voice test mode">
+        <option value="transcribe">Transcribe</option>
+        <option value="answer" selected>Answer</option>
+        <option value="debug">Debug</option>
+      </select>
+      <select class="voice-mode" id="voice-lang" title="Speech language">
+        <option value="auto" selected>Auto</option>
+        <option value="en">EN</option>
+        <option value="ar">AR</option>
+      </select>
+      <button class="icon-btn" id="tts-toggle" onclick="toggleTTS()" title="Auto speak replies: ON">🔊</button>
+      <button class="icon-btn" id="tts-pause" onclick="pauseResumeTTS()" title="Pause/resume current voice">⏸</button>
+      <button class="icon-btn" id="tts-stop" onclick="stopTTS()" title="Stop current voice">⏹</button>
+      <button class="mic-btn" id="mic-btn" onclick="toggleRecording()" title="Record voice">🎤</button>
+      <textarea id="question" placeholder="اكتب سؤالك هنا... / Type your question here..." rows="1" dir="auto"></textarea>
+      <button class="send-btn" id="send-btn" onclick="send()">➤</button>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="tab('tokens',this)"><span class="ti">📊</span>Tokens</button>
+      <button class="tab-btn" onclick="tab('thinking',this)"><span class="ti">🧠</span>Trace</button>
+      <button class="tab-btn" onclick="tab('chunks',this)"><span class="ti">📄</span>Chunks</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-tokens">
+      <div class="tok-grid">
+        <div class="tok-card"><div class="val" id="tp">—</div><div class="lbl">Prompt</div></div>
+        <div class="tok-card"><div class="val" id="tc">—</div><div class="lbl">Completion</div></div>
+        <div class="tok-card"><div class="val" id="tt">—</div><div class="lbl">Last Total</div></div>
+        <div class="tok-card"><div class="val" id="tq">0</div><div class="lbl">Questions</div></div>
+      </div>
+      <div class="tok-session">
+        <h4>Session Totals</h4>
+        <div class="tok-row"><span>Prompt</span><span id="sp">0</span></div>
+        <div class="tok-row"><span>Completion</span><span id="sc">0</span></div>
+        <div class="tok-row"><span>Grand total</span><span id="st">0</span></div>
+        <div class="tok-row"><span>Questions</span><span id="sq">0</span></div>
+      </div>
+      <div class="hint-box">
+        <b>Speed tips:</b><br>
+        • Max tok: <b>200–300</b> for faster replies<br>
+        • Chunks: <b>3–4</b> = shorter prompt<br>
+        • Use quantized model: <b>Q4_K_M</b> or <b>Q5_K_M</b><br>
+        • Add <b>--threads 6</b> (match your CPU cores)<br>
+        • Add <b>--n-gpu-layers 20</b> if you have a GPU
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-thinking">
+      <div class="think-box" id="think-box">
+        <div class="empty-note">No reasoning trace yet.<br>Ask a question to see retrieval grounding here.</div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-chunks">
+      <div id="chunks-box">
+        <div class="empty-note">No chunks yet.<br>Ask a question to see retrieved context.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let S={p:0,c:0,t:0,q:0};
+let autoTTS=true;
+let lastTTSUrl=null;
+let currentAudio=null;
+// Track last known server state
+let lastRagOk = false;
+let lastLlamaOk = false;
+
+function tab(name,btn){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+function lang(t){
+  return (t.match(/[\u0600-\u06FF]/g)||[]).length > (t.match(/[a-zA-Z]/g)||[]).length ? 'rtl':'ltr';
+}
+
+function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function resize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,140)+'px';}
+function scrollEnd(){const m=document.getElementById('messages');m.scrollTop=m.scrollHeight;}
+
+function addMsg(role,text,ttsUrl=null){
+  const m=document.getElementById('messages'),d=document.createElement('div');
+  d.className='msg '+role;
+  const dir=lang(text),em=role==='user'?'👤':'🩺';
+  let extra='';
+  if(ttsUrl){
+    const fullTtsUrl=absoluteApiUrl(ttsUrl);
+    extra=`<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="icon-btn" style="width:36px;height:36px;font-size:14px" onclick="playTTS('${fullTtsUrl}')" title="Replay voice">🔊</button>
+      <button class="icon-btn" style="width:36px;height:36px;font-size:14px" onclick="pauseResumeTTS()" title="Pause/resume voice">⏸</button>
+      <button class="icon-btn" style="width:36px;height:36px;font-size:14px" onclick="stopTTS()" title="Stop voice">⏹</button>
+      <a href="${fullTtsUrl}" target="_blank" style="color:var(--pink);font-family:var(--mono);font-size:11px;text-decoration:none">open wav</a>
+    </div>`;
+  }
+  d.innerHTML=`<div class="avatar">${em}</div><div class="bubble" dir="${dir}">${esc(text)}${extra}</div>`;
+  m.appendChild(d);scrollEnd();
+}
+
+function sysMsg(text,isErr){
+  const m=document.getElementById('messages'),d=document.createElement('div');
+  d.className='msg sys-msg'+(isErr?' err-msg':'');
+  d.innerHTML=`<div class="bubble">${esc(text)}</div>`;
+  m.appendChild(d);scrollEnd();
+}
+
+function showTyping(){
+  const m=document.getElementById('messages'),d=document.createElement('div');
+  d.className='msg ai';d.id='typing';
+  d.innerHTML=`<div class="avatar">🩺</div><div class="bubble"><div class="dots"><span></span><span></span><span></span></div></div>`;
+  m.appendChild(d);scrollEnd();
+}
+function hideTyping(){const t=document.getElementById('typing');if(t)t.remove();}
+
+function updTokens(tok){
+  if(!tok)return;
+  document.getElementById('tp').textContent=tok.prompt||'—';
+  document.getElementById('tc').textContent=tok.completion||'—';
+  document.getElementById('tt').textContent=tok.total||'—';
+  S.p+=tok.prompt||0;S.c+=tok.completion||0;S.t+=tok.total||0;S.q++;
+  document.getElementById('tq').textContent=S.q;
+  document.getElementById('sp').textContent=S.p;
+  document.getElementById('sc').textContent=S.c;
+  document.getElementById('st').textContent=S.t;
+  document.getElementById('sq').textContent=S.q;
+}
+
+function updThinking(text){
+  const b=document.getElementById('think-box');
+  if(text&&text.trim().length>0){
+    b.innerHTML='<div class="think-label">🧠 Retrieval / grounding trace:</div>'+esc(text);
+    const thinkBtn=document.querySelector('.tab-btn:nth-child(2)');
+    tab('thinking',thinkBtn);
+  }else{
+    b.innerHTML='<div class="empty-note">No trace returned.</div>';
+  }
+}
+
+function updChunks(chunks){
+  const b=document.getElementById('chunks-box');
+  if(!chunks||!chunks.length){b.innerHTML='<div class="empty-note">No chunks retrieved.</div>';return;}
+  b.innerHTML=chunks.map((c,i)=>`
+    <div class="chunk-card">
+      <div class="chunk-hdr">
+        <span class="csrc" title="${esc(c.source||'')}">${esc(c.source||'?')}</span>
+        <span class="cscr">${typeof c.score==='number'?c.score.toFixed(2):c.score||'?'} · ${esc(c.method||'')}</span>
+      </div>
+      <div class="ctext" id="ct${i}">${esc(c.text||'')}</div>
+      <button class="expand-btn" onclick="exp(${i})">Show more ▾</button>
+    </div>`).join('');
+}
+
+function exp(i){
+  const el=document.getElementById('ct'+i),btn=el.nextElementSibling;
+  const expanded=el.style.webkitLineClamp==='unset';
+  el.style.webkitLineClamp=expanded?'5':'unset';
+  el.style.overflow=expanded?'hidden':'visible';
+  btn.textContent=expanded?'Show more ▾':'Show less ▴';
+}
+
+function setDot(id,state,label){
+  // state: 'ok' | 'warn' | 'err' | 'checking'
+  const dot=document.getElementById('d-'+id);
+  dot.className='dot'+(state==='ok'?' ok':state==='warn'?' warn':state==='err'?' err':'');
+  document.getElementById('l-'+id).textContent=label;
+}
+
+async function checkStatus(){
+  const base=document.getElementById('cfg-url').value.replace('/ask','').replace('/voice','');
+  try{
+    const r=await fetch(base+'/health',{signal:AbortSignal.timeout(3000)});
+    if(!r.ok) throw new Error('non-200');
+    const d=await r.json();
+    lastRagOk = d.status==='ok';
+    lastLlamaOk = !!d.llama_alive;
+
+    // RAG dot: ok if server up AND chunks loaded
+    if(d.status==='ok'&&d.chunks>0){
+      setDot('rag','ok',`RAG ✓ (${d.chunks} chunks)`);
+    } else if(d.status==='ok'&&d.chunks===0){
+      setDot('rag','warn',`RAG (no chunks!)`);
+    } else {
+      setDot('rag','err','RAG error');
+    }
+
+    // llama dot: independent
+    if(d.llama_alive){
+      setDot('llama','ok','llama ✓');
+    } else {
+      setDot('llama','err','llama ✗ offline');
+    }
+
+    // Show/hide banner
+    const banner=document.getElementById('llama-banner');
+    if(lastRagOk && !lastLlamaOk){
+      banner.classList.add('show');
+    } else {
+      banner.classList.remove('show');
+    }
+  }catch{
+    lastRagOk=false;
+    lastLlamaOk=false;
+    setDot('rag','err','RAG offline');
+    setDot('llama','err','llama ?');
+    document.getElementById('llama-banner').classList.remove('show');
+  }
+}
+
+// Check every 6 seconds
+setInterval(checkStatus,6000);
+checkStatus();
+
+
+let mediaRecorder=null;
+let audioChunks=[];
+let isRecording=false;
+let recordStartedAt=0;
+
+function toggleTTS(){
+  autoTTS=!autoTTS;
+  const b=document.getElementById('tts-toggle');
+  b.textContent=autoTTS?'🔊':'🔇';
+  b.title='Auto speak replies: '+(autoTTS?'ON':'OFF');
+  if(!autoTTS) stopTTS();
+}
+
+function pauseResumeTTS(){
+  if(!currentAudio){
+    if(lastTTSUrl) playTTS(lastTTSUrl);
+    return;
+  }
+  if(currentAudio.paused){
+    currentAudio.play().catch(e=>sysMsg('⚠ Could not resume voice: '+e.message,true));
+  }else{
+    currentAudio.pause();
+  }
+}
+
+function stopTTS(){
+  if(currentAudio){
+    currentAudio.pause();
+    try{ currentAudio.currentTime=0; }catch(e){}
+    currentAudio=null;
+  }
+}
+
+function apiBase(){
+  const v=document.getElementById('cfg-voice-url')?.value || '';
+  const u=document.getElementById('cfg-url')?.value || '';
+  const raw=(v || u || 'http://127.0.0.1:8081').trim();
+  return raw.replace(/\\/g,'/').replace(/\/(ask|voice|v|tts).*$/,'').replace(/\/$/,'');
+}
+
+function absoluteApiUrl(url){
+  if(!url) return '';
+  if(url.startsWith('http://') || url.startsWith('https://')) return url;
+  return apiBase() + (url.startsWith('/') ? url : '/' + url);
+}
+
+async function playTTS(url){
+  if(!url) return;
+  const fullUrl=absoluteApiUrl(url);
+  try{
+    lastTTSUrl=fullUrl;
+    if(currentAudio){ currentAudio.pause(); currentAudio=null; }
+    currentAudio=new Audio(fullUrl + (fullUrl.includes('?')?'&':'?') + 't=' + Date.now());
+    currentAudio.volume=1.0;
+    currentAudio.onended=()=>{ currentAudio=null; };
+    await currentAudio.play();
+  }catch(e){
+    sysMsg('⚠ Voice answer exists but browser could not play it automatically. Click the open wav link or allow sound. URL: '+fullUrl+'\nError: '+e.message, true);
+  }
+}
+
+function audioExtFromMime(mime){
+  if(!mime) return 'webm';
+  if(mime.includes('wav')) return 'wav';
+  if(mime.includes('ogg')) return 'ogg';
+  if(mime.includes('mp4')) return 'm4a';
+  return 'webm';
+}
+
+async function toggleRecording(){
+  const mic=document.getElementById('mic-btn');
+
+  if(isRecording && mediaRecorder){
+    mediaRecorder.stop();
+    return;
+  }
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    sysMsg('❌ Your browser does not support microphone recording. Use Chrome/Edge and open http://localhost:8081', true);
+    return;
+  }
+
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,channelCount:1}});
+    audioChunks=[];
+    const mimeCandidates=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'];
+    const mime=mimeCandidates.find(x=>MediaRecorder.isTypeSupported(x)) || '';
+    mediaRecorder=new MediaRecorder(stream, mime?{mimeType:mime}:undefined);
+
+    mediaRecorder.ondataavailable=e=>{ if(e.data && e.data.size>0) audioChunks.push(e.data); };
+    mediaRecorder.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      isRecording=false;
+      mic.classList.remove('recording');
+      mic.textContent='🎤';
+      const blob=new Blob(audioChunks,{type:mediaRecorder.mimeType || 'audio/webm'});
+      if(blob.size<500){ sysMsg('❌ Recording too short or empty. Try again.', true); return; }
+      await sendVoice(blob, mediaRecorder.mimeType || 'audio/webm');
+    };
+
+    mediaRecorder.start();
+    isRecording=true;
+    recordStartedAt=Date.now();
+    mic.classList.add('recording');
+    mic.textContent='⏹';
+    sysMsg('🎙 Recording started. Press the mic again to stop.');
+  }catch(e){
+    sysMsg('❌ Microphone permission failed: '+e.message, true);
+  }
+}
+
+async function sendVoice(blob,mime){
+  if(!lastRagOk){
+    sysMsg('❌ RAG server offline. Start rag_server_rescate_TTS_ARABIC_FINAL.py first:\n  py rag_server_rescate_TTS_ARABIC_FINAL.py',true);
+    return;
+  }
+
+  const mode=document.getElementById('voice-mode').value;
+  const url=document.getElementById('cfg-voice-url').value;
+  const ext=audioExtFromMime(mime);
+  const fd=new FormData();
+  fd.append('audio', blob, 'question.'+ext);
+  fd.append('mode', mode);
+  fd.append('lang', document.getElementById('voice-lang').value || 'auto');
+  fd.append('top_k', parseInt(document.getElementById('cfg-topk').value)||4);
+  fd.append('temperature', parseFloat(document.getElementById('cfg-temp').value)||0.05);
+  fd.append('max_tokens', parseInt(document.getElementById('cfg-maxt').value)||300);
+  fd.append('tts', autoTTS ? '1' : '0');
+
+  addMsg('user','🎤 Voice message uploaded ('+mode+' mode)');
+  showTyping();
+  const startTime=Date.now();
+  try{
+    const res=await fetch(url,{method:'POST',body:fd});
+    const data=await res.json();
+    const elapsed=((Date.now()-startTime)/1000).toFixed(1);
+    hideTyping();
+    if(data.error){
+      sysMsg('❌ '+data.error,true);
+      if(data.saved_file || data.audio){
+        updThinking(JSON.stringify({saved_file:data.saved_file,audio:data.audio,hint:data.hint||''},null,2));
+      }
+      return;
+    }
+    let shown=data.answer || data.transcript || data.message || '(empty)';
+    if(data.audio){ shown += '\n\n'+`<audio: ${data.audio.duration_sec || '?'}s, ${Math.round((data.audio.size_bytes||0)/1024)} KB>`; }
+    addMsg('ai',shown+'\n\n⏱ '+elapsed+'s', data.tts_url || null);
+    if((data.tts_url || null) && autoTTS){ playTTS(data.tts_url); }
+    if(data.tts_error){ sysMsg('⚠ TTS generation error: '+data.tts_error, true); }
+    if(data.tokens) updTokens(data.tokens);
+    updThinking(data.thinking || data.trace || 'Voice upload OK.');
+    updChunks(data.chunks);
+  }catch(e){
+    hideTyping();
+    sysMsg('❌ Cannot upload voice to backend: '+e.message,true);
+  }
+}
+
+async function send(){
+  const ta=document.getElementById('question'),q=ta.value.trim();
+  if(!q)return;
+
+  if(!lastRagOk){
+    sysMsg('❌ RAG server offline. Start rag_server_rescate_TTS_ARABIC_FINAL.py first:\n  py rag_server_rescate_TTS_ARABIC_FINAL.py',true);
+    return;
+  }
+
+  const btn=document.getElementById('send-btn');
+  btn.disabled=true;ta.value='';resize(ta);
+  addMsg('user',q);showTyping();
+
+  const url=document.getElementById('cfg-url').value;
+  const startTime=Date.now();
+
+  try{
+    const res=await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        question:q,
+        top_k:parseInt(document.getElementById('cfg-topk').value)||5,
+        temperature:parseFloat(document.getElementById('cfg-temp').value)||0.05,
+        max_tokens:parseInt(document.getElementById('cfg-maxt').value)||350,
+        tts:autoTTS
+      })
+    });
+    const data=await res.json();
+    const elapsed=((Date.now()-startTime)/1000).toFixed(1);
+    hideTyping();
+    if(data.error){
+      sysMsg('❌ '+data.error,true);
+      // If llama error, update dot immediately
+      if(data.error.includes('llama') || data.error.includes('8080')){
+        setDot('llama','err','llama ✗ offline');
+        lastLlamaOk=false;
+        document.getElementById('llama-banner').classList.add('show');
+      }
+    }else{
+      addMsg('ai',(data.answer||'(empty)')+'\n\n⏱ '+elapsed+'s', data.tts_url || null);
+      if((data.tts_url || null) && autoTTS){ playTTS(data.tts_url); }
+      if(data.tts_error){ sysMsg('⚠ TTS generation error: '+data.tts_error, true); }
+      updTokens(data.tokens);
+      updThinking(data.thinking);
+      updChunks(data.chunks);
+    }
+  }catch(e){
+    hideTyping();
+    sysMsg('❌ Cannot reach RAG server.\nMake sure rag_server_final_FIXED2.py is running:\n  py rag_server_final_FIXED2.py',true);
+    setDot('rag','err','RAG offline');
+    lastRagOk=false;
+  }
+  btn.disabled=false;ta.focus();
+}
+
+function clearChat(){
+  document.getElementById('messages').innerHTML=`<div class="msg sys-msg"><div class="bubble">محادثة جديدة / New conversation.</div></div>`;
+  S={p:0,c:0,t:0,q:0};
+  ['tp','tc','tt'].forEach(id=>document.getElementById(id).textContent='—');
+  ['tq','sp','sc','st','sq'].forEach(id=>document.getElementById(id).textContent='0');
+  document.getElementById('think-box').innerHTML='<div class="empty-note">No reasoning trace yet.</div>';
+  document.getElementById('chunks-box').innerHTML='<div class="empty-note">No chunks yet.</div>';
+}
+
+document.getElementById('question').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}
+});
+document.getElementById('question').addEventListener('input',function(){resize(this);});
+</script>
+</body>
+</html>
