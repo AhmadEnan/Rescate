@@ -1,65 +1,146 @@
 // Main App Entry Point
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:biometric_estimators/biometric_estimators.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'core/theme/app_theme.dart';
-import 'features/onboarding/screens/onboarding_screen.dart';
-import 'features/home/screens/main_screen.dart';
-import 'core/providers/app_state.dart';
-import 'package:p2p_mesh/p2p_mesh.dart';
+import 'package:offline_data/offline_data.dart';
+import 'package:sensor_availability/sensor_availability.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  bool isFirstLaunch = true;
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
-  } catch (e) {
-    print('Error loading SharedPreferences: $e');
-  }
-
-  final meshProvider = MeshProvider();
-  await meshProvider.init();
-
-  runApp(
-    AppStateProvider(
-      notifier: AppState(),
-      child: ListenableBuilder(
-        listenable: meshProvider,
-        builder: (context, child) {
-          return MeshInheritedProvider(
-            notifier: meshProvider,
-            child: RescateApp(showOnboarding: isFirstLaunch),
-          );
-        },
-      ),
-    ),
-  );
+  unawaited(_detectSensorsAtStartup());
+  runApp(_BootstrapApp(measurementStore: MeasurementStore.open()));
 }
 
-class MeshInheritedProvider extends InheritedNotifier<MeshProvider> {
-  const MeshInheritedProvider({
-    super.key,
-    required MeshProvider notifier,
-    required super.child,
-  }) : super(notifier: notifier);
+Future<void> _detectSensorsAtStartup() async {
+  try {
+    await SensorAvailabilityService.instance.detectAll().timeout(
+      const Duration(seconds: 6),
+    );
+  } on Object catch (e) {
+    debugPrint('Startup sensor detection skipped: $e');
+  }
+}
 
-  static MeshProvider of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<MeshInheritedProvider>()!.notifier!;
+class _BootstrapApp extends StatelessWidget {
+  const _BootstrapApp({required this.measurementStore});
+
+  final Future<MeasurementStore> measurementStore;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<MeasurementStore>(
+      future: measurementStore,
+      builder:
+          (BuildContext context, AsyncSnapshot<MeasurementStore> snapshot) {
+            final MeasurementStore? store = snapshot.data;
+            if (store != null) {
+              return RescateApp(measurementStore: store);
+            }
+            return MaterialApp(
+              title: 'Rescate',
+              theme: ThemeData(
+                colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
+                useMaterial3: true,
+              ),
+              home: Scaffold(
+                body: Center(
+                  child: snapshot.hasError
+                      ? Text('Startup failed: ${snapshot.error}')
+                      : const CircularProgressIndicator(),
+                ),
+              ),
+            );
+          },
+    );
   }
 }
 
 class RescateApp extends StatelessWidget {
-  final bool showOnboarding;
-  const RescateApp({super.key, required this.showOnboarding});
+  const RescateApp({required this.measurementStore, super.key});
+
+  final MeasurementStore measurementStore;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Rescate',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: showOnboarding ? const OnboardingScreen() : MainScreen(key: mainScreenKey),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
+        useMaterial3: true,
+      ),
+      routes: <String, WidgetBuilder>{
+        '/sensors': (BuildContext _) => const SensorAvailabilityScreen(),
+        '/biometrics': (BuildContext context) => BiometricAvailabilityScreen(
+          onTileTap: (BiometricId id) {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (BuildContext _) => BiometricDetailScreen(
+                  id: id,
+                  measurementStore: measurementStore,
+                ),
+              ),
+            );
+          },
+        ),
+      },
+      home: _HomeScreen(measurementStore: measurementStore),
+    );
+  }
+}
+
+class _HomeScreen extends StatelessWidget {
+  const _HomeScreen({required this.measurementStore});
+
+  final MeasurementStore measurementStore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            const Text('Rescate Application Initialized'),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).pushNamed('/sensors'),
+              icon: const Icon(Icons.sensors),
+              label: const Text('View Device Sensors'),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).pushNamed('/biometrics'),
+              icon: const Icon(Icons.monitor_heart_outlined),
+              label: const Text('View Available Biometrics'),
+            ),
+            if (kDebugMode) ...<Widget>[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => unawaited(_exportBundle(context)),
+                icon: const Icon(Icons.data_object),
+                label: const Text('Export bundle'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportBundle(BuildContext context) async {
+    final List<Map<String, dynamic>> bundle = await measurementStore
+        .exportLLMBundle();
+    debugPrint(const JsonEncoder.withIndent('  ').convert(bundle));
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Exported ${bundle.length} measurements to debug log.'),
+      ),
     );
   }
 }

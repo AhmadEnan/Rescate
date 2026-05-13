@@ -1,0 +1,29 @@
+name: sensor_availability
+description: Module 7 - Device Sensor Availability (existence detection for 26 hardware sensors at app init)
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.4
+  flutter: ">=3.19.0"
+
+dependencies:
+  collection: ^1.19.1
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.rescate.sensor_availability
+        pluginClass: SensorAvailabilityPlugin
+      ios:
+        pluginClass: SensorAvailabilityPlugin
+
+resolution: workspace

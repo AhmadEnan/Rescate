@@ -1,5 +1,5 @@
 name: offline_data
-description: Module 3 - Offline-First Data & Search (SQLite FTS5, MBTiles, ObjectBox/WatermelonDB)
+description: Module 3 - Offline-First Data & Search (SQLite FTS5, MBTiles, ObjectBox, VectorStore)
 version: 0.0.1
 publish_to: 'none'
 
@@ -8,14 +8,24 @@ environment:
   flutter: ">=3.19.0"
 
 dependencies:
+  biometric_estimators:
+    path: ../biometric_estimators
+  collection: ^1.19.1      # Sorted collections / LRU helpers
+  crypto: ^3.0.6           # SHA-256 for dedup keys
   flutter:
     sdk: flutter
-  # Add SQLite, ObjectBox here later
+  path: ^1.9.1             # p.join() for DB path construction
+  path_provider: ^2.1.4    # App documents directory
+  sensor_availability:
+    path: ../sensor_availability
+  sqflite: ^2.4.2          # SQLite for VectorStore persistence
+  uuid: ^4.4.0
 
 dev_dependencies:
+  flutter_lints: ^3.0.0
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  sqflite_common_ffi: ^2.3.4   # host-side SQLite for unit tests
+  sqlite3_flutter_libs: ^0.5.24
 
 resolution: workspace
-

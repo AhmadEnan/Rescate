@@ -40,6 +40,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Rescate needs the camera to measure heart rate from a fingertip.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Rescate needs the microphone to measure respiratory rate from breath sounds.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
