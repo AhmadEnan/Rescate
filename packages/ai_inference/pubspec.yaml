@@ -1,5 +1,5 @@
 name: ai_inference
-description: Module 1 - Local LLM Execution (llama.cpp, LiteRT, Int4 Quantization)
+description: Module 1 - Local LLM Execution (llama.cpp via flutter_llama, GGUF models)
 version: 0.0.1
 publish_to: 'none'
 
@@ -10,12 +10,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # Add bindings for llama.cpp/LiteRT here later
+  # llama.cpp Flutter binding — GGUF inference on Android (Vulkan/OpenCL) & iOS (Metal)
+  flutter_llama: ^1.0.0
+  # Required for resolving app document/cache directory paths
+  path_provider: ^2.1.4
 
 dev_dependencies:
+  flutter_lints: ^3.0.0
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
 
 resolution: workspace
-
