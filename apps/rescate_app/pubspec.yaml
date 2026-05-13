@@ -11,6 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   
+  lucide_icons: any
+  google_fonts: ^6.2.1
+  
   # Core Modular Packages (Local Dependencies)
   ai_inference:
     path: ../../packages/ai_inference
@@ -24,6 +27,14 @@ dependencies:
     path: ../../packages/p2p_mesh
   security_crypto:
     path: ../../packages/security_crypto
+  flutter_animate: ^4.5.2
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
+  http: ^1.6.0
+  shared_preferences: ^2.5.5
+  speech_to_text: ^7.3.0
+  geolocator: ^14.0.2
+
   sensor_availability:
     path: ../../packages/sensor_availability
 
@@ -36,3 +47,5 @@ resolution: workspace
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/

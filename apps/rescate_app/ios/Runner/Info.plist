@@ -2,6 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Used for offline mesh communication.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Used to discover nearby mesh peers.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_rescate-mesh._tcp</string>
+		<string>_rescate-mesh._udp</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
