@@ -1,0 +1,27 @@
+name: biometric_estimators
+description: Module 8 - Biometric capture and computation pipeline.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.11.4
+  flutter: ">=3.19.0"
+
+resolution: workspace
+
+dependencies:
+  camera: ^0.11.0
+  fftea: ^1.5.0
+  flutter:
+    sdk: flutter
+  path_provider: ^2.1.4
+  record: 5.1.2
+  sensor_availability:
+    path: ../sensor_availability
+  sensors_plus: ^6.0.1
+  uuid: ^4.4.0
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+  flutter_test:
+    sdk: flutter

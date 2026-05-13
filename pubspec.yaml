@@ -2,10 +2,20 @@ name: rescate_workspace
 environment:
   sdk: ^3.11.4
 
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+dependency_overrides:
+  record_linux: ^1.3.0
+
 workspace:
   - apps/rescate_app
   - packages/ai_inference
   - packages/audio_voice
+  - packages/biometric_estimators
   - packages/offline_data
   - packages/p2p_mesh
+  - packages/rag_engine
   - packages/security_crypto
+  - packages/sensor_availability
