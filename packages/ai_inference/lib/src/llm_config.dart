@@ -1,25 +1,15 @@
 // packages/ai_inference/lib/src/llm_config.dart
 
-import 'package:flutter_llama/flutter_llama.dart';
+import 'package:llamadart/llamadart.dart';
 
-/// Default hardware configuration for llama.cpp inference.
-///
-/// These values are conservative and safe for mid-range mobile devices.
-/// Users may override [nGpuLayers] at runtime once the device capability
-/// is known.
+/// Default hardware configuration for llamadart inference.
 class LlmDefaults {
   const LlmDefaults._();
 
   static const int nThreads = 4;
-
-  /// 0 = CPU only, -1 = all layers on GPU.
-  /// Start with 0 for safety; power users can raise it in settings.
   static const int nGpuLayers = 0;
-
   static const int contextSize = 2048;
   static const int batchSize = 512;
-  static const bool useGpu = true;
-  static const bool verbose = false;
 
   static const double temperature = 0.05;
   static const double topP = 0.95;
@@ -27,15 +17,13 @@ class LlmDefaults {
   static const int maxTokens = 350;
   static const double repeatPenalty = 1.1;
 
-  /// Builds a [LlamaConfig] from [modelPath] using the default settings above.
-  static LlamaConfig buildConfig(String modelPath) => LlamaConfig(
-        modelPath: modelPath,
-        nThreads: nThreads,
-        nGpuLayers: nGpuLayers,
+  /// Builds a [ModelParams] from the default settings above.
+  static ModelParams buildModelParams() => const ModelParams(
         contextSize: contextSize,
         batchSize: batchSize,
-        useGpu: useGpu,
-        verbose: verbose,
+        microBatchSize: batchSize,
+        numberOfThreads: nThreads,
+        numberOfThreadsBatch: nThreads,
       );
 }
 

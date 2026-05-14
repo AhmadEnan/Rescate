@@ -3,7 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_llama/flutter_llama.dart';
+import 'package:llamadart/llamadart.dart';
 
 import 'llm_config.dart';
 
@@ -25,7 +25,7 @@ enum LlmStatus {
   error,
 }
 
-/// Singleton service that wraps [FlutterLlama] to provide:
+/// Singleton service that wraps `llamadart`'s [LlamaEngine] to provide:
 /// - Model lifecycle management (load / unload).
 /// - Streaming token generation via [generateStream].
 /// - Observable [status] and [lastError] for UI state binding.
@@ -43,7 +43,7 @@ class LlmService extends ChangeNotifier {
 
   static final LlmService instance = LlmService._();
 
-  final FlutterLlama _llama = FlutterLlama.instance;
+  LlamaEngine? _engine;
 
   LlmStatus _status = LlmStatus.idle;
   String? _lastError;
@@ -78,7 +78,7 @@ class LlmService extends ChangeNotifier {
     }
 
     // Unload any existing model first.
-    if (_status == LlmStatus.ready) {
+    if (_status == LlmStatus.ready || _engine != null) {
       await _unloadSilently();
     }
 
@@ -86,12 +86,10 @@ class LlmService extends ChangeNotifier {
     _lastError = null;
 
     try {
-      final config = LlmDefaults.buildConfig(modelPath);
-      final success = await _llama.loadModel(config);
-
-      if (!success) {
-        throw const LlmException('loadModel returned false — check the model path and format.');
-      }
+      _engine = LlamaEngine(LlamaBackend());
+      final params = LlmDefaults.buildModelParams();
+      
+      await _engine!.loadModel(modelPath, modelParams: params);
 
       _loadedModelPath = modelPath;
       _setStatus(LlmStatus.ready);
@@ -123,7 +121,7 @@ class LlmService extends ChangeNotifier {
     String userMessage, {
     bool isArabic = false,
   }) async* {
-    if (!isReady) {
+    if (!isReady || _engine == null) {
       throw LlmNotReadyException();
     }
 
@@ -136,16 +134,20 @@ class LlmService extends ChangeNotifier {
         userMessage: userMessage,
       );
 
-      final params = GenerationParams(
-        prompt: fullPrompt,
-        temperature: LlmDefaults.temperature,
+      final params = const GenerationParams(
+        temp: LlmDefaults.temperature,
         topP: LlmDefaults.topP,
         topK: LlmDefaults.topK,
+        penalty: LlmDefaults.repeatPenalty,
         maxTokens: LlmDefaults.maxTokens,
-        repeatPenalty: LlmDefaults.repeatPenalty,
       );
 
-      await for (final token in _llama.generateStream(params)) {
+      final stream = _engine!.generate(
+        fullPrompt,
+        params: params,
+      );
+
+      await for (final token in stream) {
         yield token;
       }
     } catch (e) {
@@ -170,7 +172,10 @@ class LlmService extends ChangeNotifier {
 
   Future<void> _unloadSilently() async {
     try {
-      await _llama.unloadModel();
+      if (_engine != null) {
+        await _engine!.dispose();
+        _engine = null;
+      }
     } catch (e) {
       debugPrint('[LlmService] unload error (ignored): $e');
     }

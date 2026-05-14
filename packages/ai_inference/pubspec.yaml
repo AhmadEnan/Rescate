@@ -11,8 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   # llama.cpp Flutter binding — GGUF inference on Android (Vulkan/OpenCL) & iOS (Metal)
-  flutter_llama:
-    path: ../flutter_llama_patched
+  llamadart: ^0.6.12
   # Required for resolving app document/cache directory paths
   path_provider: ^2.1.4
 
