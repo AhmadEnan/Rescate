@@ -2,6 +2,7 @@ library p2p_mesh;
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_mesh_network/flutter_mesh_network.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -269,5 +270,22 @@ class MeshProvider extends ChangeNotifier {
 
   List<ChatMessage> getMessagesForPeer(String peerId) {
     return _privateMessages[peerId] ?? [];
+  }
+}
+
+// ── InheritedWidget wrapper ─────────────────────────────────────────────────────
+// Provides [MeshProvider] down the widget tree via MeshInheritedProvider.of(context).
+
+class MeshInheritedProvider extends InheritedNotifier<MeshProvider> {
+  const MeshInheritedProvider({
+    super.key,
+    required MeshProvider notifier,
+    required super.child,
+  }) : super(notifier: notifier);
+
+  static MeshProvider of(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<MeshInheritedProvider>()!
+        .notifier!;
   }
 }

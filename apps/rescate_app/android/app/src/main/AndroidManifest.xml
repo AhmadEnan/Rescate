@@ -13,6 +13,15 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-feature android:name="android.hardware.camera"/>
 
+    <!-- Storage: allow native llama.cpp fopen() to read GGUF files from external storage -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- Android 13+ granular media permissions -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
     <application
         android:label="rescate_app"
         android:name="${applicationName}"
