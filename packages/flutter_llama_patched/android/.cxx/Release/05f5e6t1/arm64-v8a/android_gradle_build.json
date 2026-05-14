@@ -1,0 +1,105 @@
+{
+  "buildFiles": [
+    "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\src\\main\\cpp\\CMakeLists.txt",
+    "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\llama.cpp\\CMakeLists.txt",
+    "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\llama.cpp\\ggml\\CMakeLists.txt",
+    "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\llama.cpp\\ggml\\src\\CMakeLists.txt",
+    "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\llama.cpp\\ggml\\src\\ggml-cpu\\CMakeLists.txt",
+    "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\llama.cpp\\ggml\\src\\ggml-vulkan\\CMakeLists.txt",
+    "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\llama.cpp\\src\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "E:\\Programs\\flutter\\Android\\sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "E:\\Programs\\flutter\\Android\\sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "flutter_llama_bridge::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "flutter_llama_bridge",
+      "output": "F:\\Rescate\\apps\\rescate_app\\build\\flutter_llama\\intermediates\\cxx\\Release\\05f5e6t1\\obj\\arm64-v8a\\libflutter_llama_bridge.so",
+      "runtimeFiles": [
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libllama.so",
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml.so",
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-cpu.so",
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-vulkan.so",
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-base.so"
+      ]
+    },
+    "ggml::@23533c6d68a59d54598d": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ggml",
+      "output": "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml.so",
+      "runtimeFiles": [
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-cpu.so",
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-vulkan.so",
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-base.so"
+      ]
+    },
+    "ggml-base::@23533c6d68a59d54598d": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ggml-base",
+      "output": "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-base.so",
+      "runtimeFiles": []
+    },
+    "ggml-cpu::@23533c6d68a59d54598d": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ggml-cpu",
+      "output": "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-cpu.so",
+      "runtimeFiles": [
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-base.so"
+      ]
+    },
+    "ggml-vulkan::@122a48557561f0ed9464": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "ggml-vulkan",
+      "output": "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-vulkan.so",
+      "runtimeFiles": [
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-base.so"
+      ]
+    },
+    "llama::@b791850eb95f38641ccb": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "llama",
+      "output": "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libllama.so",
+      "runtimeFiles": [
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml.so",
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-cpu.so",
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-vulkan.so",
+        "C:\\Users\\MhmdSheref\\AppData\\Local\\Pub\\Cache\\hosted\\pub.dev\\flutter_llama-1.1.2\\android\\.cxx\\Release\\05f5e6t1\\arm64-v8a\\bin\\libggml-base.so"
+      ]
+    },
+    "vulkan-shaders-gen::@122a48557561f0ed9464": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "vulkan-shaders-gen"
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "E:\\Programs\\flutter\\Android\\sdk\\ndk\\27.0.12077973\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang.exe",
+      "cppCompilerExecutable": "E:\\Programs\\flutter\\Android\\sdk\\ndk\\27.0.12077973\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\clang++.exe"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}

@@ -43,12 +43,12 @@ WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8").strip()
 # Your current folder structure:
 #   D:\rag_system\piper\piper\piper.exe
 #   D:\rag_system\piper\voices\en_US-lessac-medium.onnx
-PIPER_EXE = os.environ.get("PIPER_EXE", r"D:\rag_system\piper\piper\piper.exe").strip()
-PIPER_VOICE = os.environ.get("PIPER_VOICE", r"D:\rag_system\piper\voices\en_US-lessac-medium.onnx").strip()
+PIPER_EXE = os.environ.get("PIPER_EXE", r"piper\piper\piper.exe").strip()
+PIPER_VOICE = os.environ.get("PIPER_VOICE", r"piper\voices\en_US-lessac-medium.onnx").strip()
 # Optional Arabic Piper/Sherpa-compatible voice model. Leave empty until you download one.
 # If empty, Arabic answers will still appear as text, but TTS will be skipped instead of speaking broken English.
-PIPER_VOICE_AR = os.environ.get("PIPER_VOICE_AR", r"D:\rag_system\piper\voices_ar\ar_JO-kareem-low.onnx").strip()
-TTS_OUTPUT_DIR = os.environ.get("TTS_OUTPUT_DIR", r"D:\rag_system\tts_outputs").strip()
+PIPER_VOICE_AR = os.environ.get("PIPER_VOICE_AR", r"piper\voices_ar\ar_JO-kareem-low.onnx").strip()
+TTS_OUTPUT_DIR = os.environ.get("TTS_OUTPUT_DIR", r"tts_outputs").strip()
 ENABLE_TTS_DEFAULT = os.environ.get("ENABLE_TTS_DEFAULT", "1").strip() not in {"0", "false", "False", "no", "NO"}
 
 # Arabic output voice engine.

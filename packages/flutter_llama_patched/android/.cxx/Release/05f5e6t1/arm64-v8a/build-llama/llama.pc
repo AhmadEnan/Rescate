@@ -1,0 +1,10 @@
+prefix=C:/Program Files (x86)/flutter_llama
+exec_prefix=C:/Program Files (x86)/flutter_llama
+libdir=C:/Program Files (x86)/flutter_llama/lib
+includedir=C:/Program Files (x86)/flutter_llama/include
+
+Name: llama
+Description: Port of Facebook's LLaMA model in C/C++
+Version: 0.0.4443
+Libs: -L${libdir} -lggml -lggml-base -lllama
+Cflags: -I${includedir}
