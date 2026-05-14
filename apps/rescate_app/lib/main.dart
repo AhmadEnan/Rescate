@@ -1,13 +1,15 @@
 // Main App Entry Point
 import 'dart:async';
 
-import 'package:biometric_estimators/biometric_estimators.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:offline_data/offline_data.dart';
+import 'package:p2p_mesh/p2p_mesh.dart';
 import 'package:sensor_availability/sensor_availability.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite/sqflite.dart';
+
+import 'core/providers/app_state.dart';
+import 'features/home/screens/main_screen.dart';
 
 import 'core/providers/app_state.dart';
 import 'features/home/screens/main_screen.dart';
@@ -32,6 +34,8 @@ Future<void> _detectSensorsAtStartup() async {
   }
 }
 
+// ── Loading wrapper ─────────────────────────────────────────────────────────────
+
 class _BootstrapApp extends StatelessWidget {
   const _BootstrapApp({required this.measurementStore});
 
@@ -41,30 +45,31 @@ class _BootstrapApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return FutureBuilder<MeasurementStore>(
       future: measurementStore,
-      builder:
-          (BuildContext context, AsyncSnapshot<MeasurementStore> snapshot) {
-            final MeasurementStore? store = snapshot.data;
-            if (store != null) {
-              return RescateApp(measurementStore: store);
-            }
-            return MaterialApp(
-              title: 'Rescate',
-              theme: ThemeData(
-                colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
-                useMaterial3: true,
-              ),
-              home: Scaffold(
-                body: Center(
-                  child: snapshot.hasError
-                      ? Text('Startup failed: ${snapshot.error}')
-                      : const CircularProgressIndicator(),
-                ),
-              ),
-            );
-          },
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
+          return RescateApp(measurementStore: snapshot.data!);
+        }
+        return MaterialApp(
+          title: 'Rescate',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
+            useMaterial3: true,
+          ),
+          home: Scaffold(
+            body: Center(
+              child: snapshot.hasError
+                  ? Text('Startup failed: ${snapshot.error}')
+                  : const CircularProgressIndicator(),
+            ),
+          ),
+        );
+      },
     );
   }
 }
+
+// ── Main application ────────────────────────────────────────────────────────────
 
 class RescateApp extends StatefulWidget {
   const RescateApp({required this.measurementStore, super.key});
@@ -76,17 +81,20 @@ class RescateApp extends StatefulWidget {
 }
 
 class _RescateAppState extends State<RescateApp> {
-  late final AppState _appState;
+  final AppState _appState = AppState();
+  final MeshProvider _meshProvider = MeshProvider();
 
   @override
   void initState() {
     super.initState();
-    _appState = AppState();
+    // Initialize mesh networking in the background (non-blocking).
+    unawaited(_meshProvider.init());
   }
 
   @override
   void dispose() {
     _appState.dispose();
+    _meshProvider.dispose();
     super.dispose();
   }
 

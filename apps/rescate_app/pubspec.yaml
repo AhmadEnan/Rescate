@@ -36,9 +36,12 @@ dependencies:
   geolocator: ^14.0.2
   nearby_connections: ^4.3.0
   device_info_plus: ^11.0.0
+  # Used by ModelSetupScreen to let the user pick their own .gguf model file
+  file_picker: ^8.0.0
 
   sensor_availability:
     path: ../../packages/sensor_availability
+  permission_handler: ^12.0.1
 
 dev_dependencies:
   flutter_test:

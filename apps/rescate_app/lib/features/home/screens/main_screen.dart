@@ -38,22 +38,43 @@ class MainScreenState extends State<MainScreen> {
       backgroundColor: AppColors.background,
       extendBody: true,
       body: _screens[_currentIndex],
+
+      // ── Floating AI Chat shortcut (shown on every tab except the chat tab) ──
+      floatingActionButton: _currentIndex != 2
+          ? FloatingActionButton.extended(
+              heroTag: 'ai_chat_fab',
+              onPressed: () => setState(() => _currentIndex = 2),
+              backgroundColor: AppColors.primaryRed,
+              foregroundColor: Colors.white,
+              elevation: 6,
+              icon: const Icon(LucideIcons.bot, size: 20),
+              label: Text(
+                'AI Chat',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+
       bottomNavigationBar: SizedBox(
         height: 100,
         child: Stack(
           alignment: Alignment.bottomCenter,
           clipBehavior: Clip.none,
           children: [
-            // The shortened background
+            // Background strip
             Container(
               height: 70,
               decoration: const BoxDecoration(
                 color: AppColors.background,
               ),
             ),
-            // The floating icons
+            // Nav pills row
             Positioned(
-              top: 4, // Adjusting so they sit exactly halfway (52/2 = 26. 100 - 70 = 30. 30 - 26 = 4)
+              top: 4,
               left: 0,
               right: 0,
               child: Row(
@@ -61,24 +82,28 @@ class MainScreenState extends State<MainScreen> {
                 children: [
                   _NavItem(
                     icon: LucideIcons.bookOpen,
+                    label: 'Learn',
                     index: 0,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
                   _NavItem(
                     icon: LucideIcons.map,
+                    label: 'Map',
                     index: 1,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
                   _NavItem(
                     icon: LucideIcons.bot,
+                    label: 'AI Chat',
                     index: 2,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
                   _NavItem(
                     icon: LucideIcons.messageSquare,
+                    label: 'Community',
                     index: 3,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
@@ -93,14 +118,18 @@ class MainScreenState extends State<MainScreen> {
   }
 }
 
+// ── Nav pill widget ─────────────────────────────────────────────────────────────
+
 class _NavItem extends StatelessWidget {
   final IconData icon;
+  final String label;
   final int index;
   final int currentIndex;
   final ValueChanged<int> onTap;
 
   const _NavItem({
     required this.icon,
+    required this.label,
     required this.index,
     required this.currentIndex,
     required this.onTap,
@@ -116,7 +145,8 @@ class _NavItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
-        width: isActive ? 100 : 52,
+        // Active pill is wider to fit the label; 'AI Chat' needs a bit extra
+        width: isActive ? (label.length > 5 ? 118 : 100) : 52,
         height: 52,
         decoration: BoxDecoration(
           color: isActive ? const Color(0xFFA11F2B) : const Color(0xFFD9D0C7),
@@ -126,19 +156,21 @@ class _NavItem extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
+            // Pink highlight circle behind icon when active
             if (isActive)
               Positioned(
                 left: 0,
                 top: 0,
                 bottom: 0,
                 child: Container(
-                  width: 40, // 52 - 6*2 = 40 inner space
+                  width: 40,
                   decoration: const BoxDecoration(
                     color: Color(0xFFEFAEB2),
                     shape: BoxShape.circle,
                   ),
                 ),
               ),
+            // Icon
             Positioned(
               left: 0,
               top: 0,
@@ -149,11 +181,34 @@ class _NavItem extends StatelessWidget {
                   child: Icon(
                     icon,
                     size: 22,
-                    color: isActive ? const Color(0xFFA11F2B) : const Color(0xFF202020),
+                    color: isActive
+                        ? const Color(0xFFA11F2B)
+                        : const Color(0xFF202020),
                   ),
                 ),
               ),
             ),
+            // Label (only shown when active, slides in with the pill)
+            if (isActive)
+              Positioned(
+                left: 42,
+                top: 0,
+                right: 2,
+                bottom: 0,
+                child: Center(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
