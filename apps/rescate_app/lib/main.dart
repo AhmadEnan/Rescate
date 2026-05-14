@@ -1,15 +1,23 @@
 // Main App Entry Point
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:biometric_estimators/biometric_estimators.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:offline_data/offline_data.dart';
 import 'package:sensor_availability/sensor_availability.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
+import 'package:sqflite/sqflite.dart';
+
+import 'core/providers/app_state.dart';
+import 'features/home/screens/main_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    // Use WASM SQLite backed by IndexedDB on web.
+    databaseFactory = databaseFactoryFfiWeb;
+  }
   unawaited(_detectSensorsAtStartup());
   runApp(_BootstrapApp(measurementStore: MeasurementStore.open()));
 }
@@ -58,88 +66,56 @@ class _BootstrapApp extends StatelessWidget {
   }
 }
 
-class RescateApp extends StatelessWidget {
+class RescateApp extends StatefulWidget {
   const RescateApp({required this.measurementStore, super.key});
 
   final MeasurementStore measurementStore;
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Rescate',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
-        useMaterial3: true,
-      ),
-      routes: <String, WidgetBuilder>{
-        '/sensors': (BuildContext _) => const SensorAvailabilityScreen(),
-        '/biometrics': (BuildContext context) => BiometricAvailabilityScreen(
-          onTileTap: (BiometricId id) {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (BuildContext _) => BiometricDetailScreen(
-                  id: id,
-                  measurementStore: measurementStore,
-                ),
-              ),
-            );
-          },
-        ),
-      },
-      home: _HomeScreen(measurementStore: measurementStore),
-    );
-  }
+  State<RescateApp> createState() => _RescateAppState();
 }
 
-class _HomeScreen extends StatelessWidget {
-  const _HomeScreen({required this.measurementStore});
+class _RescateAppState extends State<RescateApp> {
+  late final AppState _appState;
 
-  final MeasurementStore measurementStore;
+  @override
+  void initState() {
+    super.initState();
+    _appState = AppState();
+  }
+
+  @override
+  void dispose() {
+    _appState.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('Rescate Application Initialized'),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => Navigator.of(context).pushNamed('/sensors'),
-              icon: const Icon(Icons.sensors),
-              label: const Text('View Device Sensors'),
-            ),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: () => Navigator.of(context).pushNamed('/biometrics'),
-              icon: const Icon(Icons.monitor_heart_outlined),
-              label: const Text('View Available Biometrics'),
-            ),
-            if (kDebugMode) ...<Widget>[
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () => unawaited(_exportBundle(context)),
-                icon: const Icon(Icons.data_object),
-                label: const Text('Export bundle'),
-              ),
-            ],
-          ],
+    return AppStateProvider(
+      notifier: _appState,
+      child: MaterialApp(
+        title: 'Rescate',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
+          useMaterial3: true,
         ),
-      ),
-    );
-  }
-
-  Future<void> _exportBundle(BuildContext context) async {
-    final List<Map<String, dynamic>> bundle = await measurementStore
-        .exportLLMBundle();
-    debugPrint(const JsonEncoder.withIndent('  ').convert(bundle));
-    if (!context.mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Exported ${bundle.length} measurements to debug log.'),
+        routes: <String, WidgetBuilder>{
+          '/sensors': (BuildContext _) => const SensorAvailabilityScreen(),
+          '/biometrics': (BuildContext context) => BiometricAvailabilityScreen(
+            onTileTap: (BiometricId id) {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext _) => BiometricDetailScreen(
+                    id: id,
+                    measurementStore: widget.measurementStore,
+                  ),
+                ),
+              );
+            },
+          ),
+        },
+        home: MainScreen(key: mainScreenKey),
       ),
     );
   }

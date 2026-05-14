@@ -1,8 +1,9 @@
 // lib/vector_store/vector_store.dart
 
 import 'dart:math' as math;
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, compute;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -90,6 +91,10 @@ class VectorStore {
     final String path;
     if (dbName == inMemoryDatabasePath) {
       path = inMemoryDatabasePath;
+    } else if (kIsWeb) {
+      // On web path_provider is unavailable; sqflite_common_ffi_web uses
+      // the bare filename as an IndexedDB store name.
+      path = dbName;
     } else if (p.isAbsolute(dbName)) {
       path = dbName;
     } else {

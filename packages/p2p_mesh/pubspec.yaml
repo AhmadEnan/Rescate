@@ -17,6 +17,7 @@ dependencies:
   uuid: ^4.5.3
   security_crypto:
     path: ../security_crypto
+  flutter_blue_plus_winrt: ^0.0.20
   # Add Nearby/Multipeer dependencies here later
 
 dev_dependencies:

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:biometric_estimators/biometric_estimators.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sensor_availability/sensor_availability.dart';
@@ -18,6 +19,10 @@ class MeasurementStore implements BiometricMeasurementRepository {
     final String dbPath;
     if (path == inMemoryDatabasePath) {
       dbPath = inMemoryDatabasePath;
+    } else if (kIsWeb) {
+      // On web path_provider is unavailable; sqflite_common_ffi_web uses
+      // the bare filename as an IndexedDB store name.
+      dbPath = path ?? _kDefaultDbName;
     } else if (path != null && p.isAbsolute(path)) {
       dbPath = path;
     } else {
