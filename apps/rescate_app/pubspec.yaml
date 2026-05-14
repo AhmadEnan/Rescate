@@ -23,6 +23,8 @@ dependencies:
     path: ../../packages/biometric_estimators
   offline_data:
     path: ../../packages/offline_data
+  p2p_mesh:
+    path: ../../packages/p2p_mesh
   security_crypto:
     path: ../../packages/security_crypto
   flutter_animate: ^4.5.2
@@ -34,6 +36,7 @@ dependencies:
   shared_preferences: ^2.5.5
   speech_to_text: ^7.3.0
   geolocator: ^14.0.2
+  flutter_map_tile_caching: ^9.0.1
   nearby_connections: ^4.3.0
   device_info_plus: ^11.0.0
   # Used by ModelSetupScreen to let the user pick their own .gguf model file

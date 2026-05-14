@@ -1,7 +1,9 @@
 // Main App Entry Point
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:offline_data/offline_data.dart';
 import 'package:p2p_mesh/p2p_mesh.dart';
 import 'package:sensor_availability/sensor_availability.dart';
@@ -11,17 +13,24 @@ import 'package:sqflite/sqflite.dart';
 import 'core/providers/app_state.dart';
 import 'features/home/screens/main_screen.dart';
 
-import 'core/providers/app_state.dart';
-import 'features/home/screens/main_screen.dart';
-
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kIsWeb) {
     // Use WASM SQLite backed by IndexedDB on web.
     databaseFactory = databaseFactoryFfiWeb;
   }
+  await _initOfflineMapCache();
   unawaited(_detectSensorsAtStartup());
   runApp(_BootstrapApp(measurementStore: MeasurementStore.open()));
+}
+
+Future<void> _initOfflineMapCache() async {
+  try {
+    await FMTCObjectBoxBackend().initialise();
+    await FMTCStore('rescate_offline_map').manage.create();
+  } on Object catch (e) {
+    debugPrint('Offline map cache initialization skipped: $e');
+  }
 }
 
 Future<void> _detectSensorsAtStartup() async {

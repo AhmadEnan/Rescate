@@ -52,4 +52,5 @@ dependencies {
     // CallbackToFutureAdapter from concurrent-futures, but doesn't declare it as a
     // dependency. Adding it explicitly ensures the class is on the compile classpath.
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
+    implementation("com.graphhopper:graphhopper-core:1.0")
 }
