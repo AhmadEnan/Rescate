@@ -1,0 +1,21 @@
+name: ai_inference
+description: Module 1 - Local LLM Execution (llama.cpp, LiteRT, Int4 Quantization)
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.4
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Add bindings for llama.cpp/LiteRT here later
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+resolution: workspace
+

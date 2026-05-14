@@ -1,0 +1,36 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Error Rules
+    avoid_print: true
+    avoid_empty_else: true
+    cancel_subscriptions: true
+    close_sinks: true
+    valid_regexps: true
+    
+    # Style Rules
+    always_declare_return_types: true
+    camel_case_types: true
+    camel_case_extensions: true
+    file_names: true
+    non_constant_identifier_names: true
+    constant_identifier_names: true
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true
+    prefer_final_fields: true
+    prefer_final_locals: true
+    
+    # Architecture/Structure Rules
+    # These rules help enforce separation of concerns across packages
+    public_member_api_docs: false # Re-enable when ready
+    sort_pub_dependencies: true
+    
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+  errors:
+    missing_required_param: error
+    missing_return: error
+    todo: warning
