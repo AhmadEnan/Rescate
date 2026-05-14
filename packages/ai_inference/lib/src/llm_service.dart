@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
 
+import 'legacy_rag.dart';
 import 'llm_config.dart';
 
 /// Status of the [LlmService] model lifecycle.
@@ -90,6 +91,9 @@ class LlmService extends ChangeNotifier {
       final params = LlmDefaults.buildModelParams();
       
       await _engine!.loadModel(modelPath, modelParams: params);
+      
+      // Load RAG chunks into memory if not already loaded.
+      await LegacyRag.initialize();
 
       _loadedModelPath = modelPath;
       _setStatus(LlmStatus.ready);
@@ -128,10 +132,10 @@ class LlmService extends ChangeNotifier {
     _setStatus(LlmStatus.generating);
 
     try {
-      final systemPrompt = systemPromptFor(isArabic: isArabic);
-      final fullPrompt = buildPrompt(
-        systemPrompt: systemPrompt,
-        userMessage: userMessage,
+      final chunks = LegacyRag.search(userMessage, topK: 2);
+      final fullPrompt = LegacyRag.buildPrompt(
+        question: userMessage,
+        chunks: chunks,
       );
 
       final params = const GenerationParams(
