@@ -5,12 +5,21 @@ import 'package:flutter/material.dart';
 import 'package:offline_data/offline_data.dart';
 import 'package:p2p_mesh/p2p_mesh.dart';
 import 'package:sensor_availability/sensor_availability.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
+import 'package:sqflite/sqflite.dart';
+
+import 'core/providers/app_state.dart';
+import 'features/home/screens/main_screen.dart';
 
 import 'core/providers/app_state.dart';
 import 'features/home/screens/main_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    // Use WASM SQLite backed by IndexedDB on web.
+    databaseFactory = databaseFactoryFfiWeb;
+  }
   unawaited(_detectSensorsAtStartup());
   runApp(_BootstrapApp(measurementStore: MeasurementStore.open()));
 }
@@ -93,17 +102,28 @@ class _RescateAppState extends State<RescateApp> {
   Widget build(BuildContext context) {
     return AppStateProvider(
       notifier: _appState,
-      child: MeshInheritedProvider(
-        notifier: _meshProvider,
-        child: MaterialApp(
-          title: 'Rescate',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
-            useMaterial3: true,
-          ),
-          home: const MainScreen(),
+      child: MaterialApp(
+        title: 'Rescate',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
+          useMaterial3: true,
         ),
+        routes: <String, WidgetBuilder>{
+          '/sensors': (BuildContext _) => const SensorAvailabilityScreen(),
+          '/biometrics': (BuildContext context) => BiometricAvailabilityScreen(
+            onTileTap: (BiometricId id) {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext _) => BiometricDetailScreen(
+                    id: id,
+                    measurementStore: widget.measurementStore,
+                  ),
+                ),
+              );
+            },
+          ),
+        },
+        home: MainScreen(key: mainScreenKey),
       ),
     );
   }
