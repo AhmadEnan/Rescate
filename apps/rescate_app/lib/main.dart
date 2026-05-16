@@ -1,7 +1,9 @@
 // Main App Entry Point
 import 'dart:async';
 
+import 'package:ai_inference/ai_inference.dart';
 import 'package:biometric_estimators/biometric_estimators.dart';
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
@@ -11,17 +13,31 @@ import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'core/providers/app_state.dart';
+import 'features/ai_chat/state/llm_state.dart';
 import 'features/home/screens/main_screen.dart';
 
 Future<void> main() async {
+  Profiler.markSessionStart();
   WidgetsFlutterBinding.ensureInitialized();
   if (kIsWeb) {
     // Use WASM SQLite backed by IndexedDB on web.
     databaseFactory = databaseFactoryFfiWeb;
   }
-  await _initOfflineMapCache();
+  try {
+    LlmDefaults.activeProfile = await Profiler.span(
+      'bootstrap.deviceProfile',
+      () => DeviceProfile.detect(),
+    );
+  } catch (e) {
+    debugPrint('[main] DeviceProfile.detect failed: $e');
+    LlmDefaults.activeProfile = DeviceProfile.fallback;
+  }
+  await Profiler.span('bootstrap.initOfflineMapCache', _initOfflineMapCache);
   unawaited(_detectSensorsAtStartup());
-  runApp(_BootstrapApp(measurementStore: MeasurementStore.open()));
+  runApp(_BootstrapApp(
+    measurementStore:
+        Profiler.span('bootstrap.openMeasurementStore', () => MeasurementStore.open()),
+  ));
 }
 
 Future<void> _initOfflineMapCache() async {
@@ -34,13 +50,15 @@ Future<void> _initOfflineMapCache() async {
 }
 
 Future<void> _detectSensorsAtStartup() async {
-  try {
-    await SensorAvailabilityService.instance.detectAll().timeout(
-      const Duration(seconds: 6),
-    );
-  } on Object catch (e) {
-    debugPrint('Startup sensor detection skipped: $e');
-  }
+  await Profiler.span('bootstrap.detectSensors', () async {
+    try {
+      await SensorAvailabilityService.instance.detectAll().timeout(
+        const Duration(seconds: 6),
+      );
+    } on Object catch (e) {
+      debugPrint('Startup sensor detection skipped: $e');
+    }
+  });
 }
 
 // ── Loading wrapper ─────────────────────────────────────────────────────────────
@@ -89,18 +107,31 @@ class RescateApp extends StatefulWidget {
   State<RescateApp> createState() => _RescateAppState();
 }
 
-class _RescateAppState extends State<RescateApp> {
+class _RescateAppState extends State<RescateApp> with WidgetsBindingObserver {
   final AppState _appState = AppState();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(LlmState.instance.tryAutoLoadModel());
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _appState.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(Profiler.exportJson(label: 'autosave'));
+    }
   }
 
   @override

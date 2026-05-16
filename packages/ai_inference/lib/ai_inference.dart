@@ -18,5 +18,7 @@
 /// ```
 library ai_inference;
 
+export 'src/device_profile.dart';
+export 'src/legacy_rag.dart';
 export 'src/llm_config.dart';
 export 'src/llm_service.dart';

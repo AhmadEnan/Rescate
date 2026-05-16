@@ -532,6 +532,108 @@ class _EmptyState extends StatelessWidget {
 
 // ── Chat bubble ────────────────────────────────────────────────────────────────
 
+String _formatTimings(ChatMessage m) {
+  final parts = <String>[];
+  if (m.ttftMs != null) parts.add('first token ${_fmtMs(m.ttftMs!)}');
+  if (m.totalMs != null) parts.add('total ${_fmtMs(m.totalMs!)}');
+  return parts.join(' • ');
+}
+
+String _fmtMs(int ms) {
+  if (ms < 1000) return '${ms}ms';
+  final s = ms / 1000.0;
+  return s < 10 ? '${s.toStringAsFixed(2)}s' : '${s.toStringAsFixed(1)}s';
+}
+
+/// Renders a growing text string with a soft fade-in on each newly-appended
+/// chunk. Drives the "word arrives, then settles" feel while streaming.
+class _StreamingText extends StatefulWidget {
+  const _StreamingText({required this.text, required this.style});
+  final String text;
+  final TextStyle style;
+
+  @override
+  State<_StreamingText> createState() => _StreamingTextState();
+}
+
+class _StreamingTextState extends State<_StreamingText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  String _stable = '';
+  String _newest = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    )..addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() {
+          _stable = _stable + _newest;
+          _newest = '';
+        });
+      }
+    });
+    _newest = widget.text;
+    if (_newest.isNotEmpty) _ctrl.forward(from: 0);
+  }
+
+  @override
+  void didUpdateWidget(covariant _StreamingText old) {
+    super.didUpdateWidget(old);
+    if (widget.text == old.text) return;
+    final prev = _stable + _newest;
+    if (widget.text.startsWith(prev)) {
+      final tail = widget.text.substring(prev.length);
+      if (tail.isEmpty) return;
+      setState(() {
+        _stable = prev;
+        _newest = tail;
+      });
+      _ctrl.forward(from: 0);
+    } else {
+      // Non-append change (e.g. error replacement) — snap to stable.
+      setState(() {
+        _stable = widget.text;
+        _newest = '';
+      });
+      _ctrl.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) {
+        return Text.rich(
+          TextSpan(
+            style: widget.style,
+            children: <InlineSpan>[
+              TextSpan(text: _stable),
+              if (_newest.isNotEmpty)
+                TextSpan(
+                  text: _newest,
+                  style: widget.style.copyWith(
+                    color: widget.style.color?.withValues(alpha: _ctrl.value),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({required this.message});
 
@@ -568,13 +670,30 @@ class _ChatBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                message.text.isEmpty && message.isStreaming ? '…' : message.text,
-                style: GoogleFonts.inter(fontSize: 14, color: textColor),
-              ),
-              if (message.isStreaming) ...[
+              if (message.text.isEmpty && message.isStreaming)
+                _TypingIndicator(color: textColor)
+              else if (!isUser && message.isStreaming) ...[
+                _StreamingText(
+                  text: message.text,
+                  style: GoogleFonts.inter(fontSize: 14, color: textColor),
+                ),
                 const SizedBox(height: 6),
                 _TypingIndicator(color: textColor),
+              ] else
+                Text(
+                  message.text,
+                  style: GoogleFonts.inter(fontSize: 14, color: textColor),
+                ),
+              if (!isUser && !message.isStreaming &&
+                  (message.ttftMs != null || message.totalMs != null)) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _formatTimings(message),
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: textColor.withValues(alpha: 0.6),
+                  ),
+                ),
               ],
             ],
           ),

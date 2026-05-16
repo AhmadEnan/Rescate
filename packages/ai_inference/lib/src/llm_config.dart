@@ -1,32 +1,81 @@
 // packages/ai_inference/lib/src/llm_config.dart
+//
+// Hardware-aware llama.cpp model parameters.
+//
+// On Android, llamadart 0.6.13 silently maps `GpuBackend.auto` → `cpu`, so we
+// pin `GpuBackend.vulkan` explicitly. Pass these dart-defines at build time to
+// enable extra Vulkan offload paths in llamadart:
+//
+//   --dart-define=LLAMADART_ANDROID_VULKAN_ALLOW_OP_OFFLOAD=true
+//   --dart-define=LLAMADART_ANDROID_VULKAN_ALLOW_KQV=true
+//   --dart-define=LLAMADART_ANDROID_VULKAN_ALLOW_FLASH_ATTN=true
+//
+// Call `DeviceProfile.detect()` once in app startup and assign the result to
+// [LlmDefaults.activeProfile] before invoking [LlmDefaults.buildModelParams].
 
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:llamadart/llamadart.dart';
+
+import 'device_profile.dart';
 
 /// Default hardware configuration for llamadart inference.
 class LlmDefaults {
   const LlmDefaults._();
 
-  static const int nThreads = 4;
-  static const int nGpuLayers = 99; // Set to 99 to offload all possible layers to the GPU
-  static const int contextSize = 2048;
-  static const int batchSize = 512;
+  /// The detected device profile. App startup should set this to the result
+  /// of [DeviceProfile.detect]. If left `null`, [DeviceProfile.fallback] is
+  /// used instead.
+  static DeviceProfile? activeProfile;
 
-  static const double temperature = 0.05;
+  // Sampling defaults — kept as compile-time constants.
+  // 0.6 gives the model room to vary phrasing for casual or general questions
+  // while staying grounded enough for emergency instructions to remain stable.
+  static const double temperature = 0.6;
   static const double topP = 0.95;
   static const int topK = 40;
-  static const int maxTokens = 350;
+  static const int maxTokens = 384;
   static const double repeatPenalty = 1.1;
 
-  /// Builds a [ModelParams] from the default settings above.
-  static ModelParams buildModelParams() => const ModelParams(
-        contextSize: contextSize,
-        gpuLayers: nGpuLayers,
-        preferredBackend: GpuBackend.auto, // Let llama.cpp auto-detect the best backend for the Android device
-        batchSize: batchSize,
-        microBatchSize: batchSize,
-        numberOfThreads: nThreads,
-        numberOfThreadsBatch: nThreads,
-      );
+  /// Builds a [ModelParams] using the [activeProfile] (or fallback).
+  static ModelParams buildModelParams() {
+    final DeviceProfile profile = activeProfile ?? DeviceProfile.fallback;
+
+    Profiler.event(
+      'llm.backend',
+      data: <String, Object?>{
+        'resolved': 'vulkan',
+        'threads': profile.recommendedThreads,
+        'ctx': profile.recommendedContextSize,
+        'gpuLayers': profile.recommendedGpuLayers,
+      },
+    );
+
+    return ModelParams(
+      contextSize: profile.recommendedContextSize,
+      gpuLayers: profile.recommendedGpuLayers,
+      preferredBackend: GpuBackend.vulkan,
+      numberOfThreads: profile.recommendedThreads,
+      numberOfThreadsBatch: profile.recommendedBatchThreads,
+      batchSize: profile.recommendedBatchSize,
+      microBatchSize: profile.recommendedMicroBatchSize,
+      useMmap: true,
+      useMlock: !profile.isLowRam,
+      cacheTypeK: _kvCacheTypeFromString(profile.cacheTypeK),
+      cacheTypeV: _kvCacheTypeFromString(profile.cacheTypeV),
+    );
+  }
+
+  static KvCacheType _kvCacheTypeFromString(String value) {
+    switch (value) {
+      case 'q8_0':
+        return KvCacheType.q8_0;
+      case 'q4_0':
+        return KvCacheType.q4_0;
+      case 'f16':
+      default:
+        return KvCacheType.f16;
+    }
+  }
 }
 
 // ── System Prompts ────────────────────────────────────────────────────────────

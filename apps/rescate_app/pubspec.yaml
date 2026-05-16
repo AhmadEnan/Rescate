@@ -23,6 +23,8 @@ dependencies:
     path: ../../packages/biometric_estimators
   bluetooth_mesh:
     path: ../../packages/bluetooth_mesh
+  dev_profiler:
+    path: ../../packages/dev_profiler
   offline_data:
     path: ../../packages/offline_data
   security_crypto:

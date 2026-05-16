@@ -1,5 +1,8 @@
 package com.example.rescate_app
 
+import android.app.ActivityManager
+import android.content.Context
+import android.os.Build
 import com.graphhopper.GHRequest
 import com.graphhopper.GraphHopper
 import com.graphhopper.reader.osm.GraphHopperOSM
@@ -52,6 +55,37 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dev.rescate/device_profile")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getInfo" -> handleDeviceProfile(result)
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun handleDeviceProfile(result: MethodChannel.Result) {
+        try {
+            val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val memInfo = ActivityManager.MemoryInfo()
+            activityManager.getMemoryInfo(memInfo)
+            val socModel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Build.SOC_MODEL
+            } else {
+                ""
+            }
+            val info: Map<String, Any?> = mapOf(
+                "totalRamMb" to (memInfo.totalMem / (1024L * 1024L)),
+                "availRamMb" to (memInfo.availMem / (1024L * 1024L)),
+                "isLowRamDevice" to activityManager.isLowRamDevice,
+                "socModel" to socModel,
+                "abi" to (Build.SUPPORTED_ABIS.firstOrNull() ?: ""),
+            )
+            result.success(info)
+        } catch (e: Throwable) {
+            result.error("DEVICE_PROFILE_ERROR", e.message, null)
+        }
     }
 
     private fun prepareRoadGraph(arguments: Any?, result: MethodChannel.Result) {

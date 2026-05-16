@@ -2,8 +2,10 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ai_inference/ai_inference.dart';
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,18 +17,30 @@ class ChatMessage {
     required this.text,
     required this.isUser,
     this.isStreaming = false,
+    this.ttftMs,
+    this.totalMs,
   });
 
   String text;
   final bool isUser;
   bool isStreaming;
+  /// Time-to-first-token in ms. Set only for AI messages, after the first token arrives.
+  int? ttftMs;
+  /// Total wall-clock time from sendMessage to stream-done in ms. AI messages only.
+  int? totalMs;
 
-  Map<String, dynamic> toJson() =>
-      {'text': text, 'isUser': isUser};
+  Map<String, dynamic> toJson() => {
+        'text': text,
+        'isUser': isUser,
+        if (ttftMs != null) 'ttftMs': ttftMs,
+        if (totalMs != null) 'totalMs': totalMs,
+      };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
         text: json['text'] as String? ?? '',
         isUser: json['isUser'] as bool? ?? false,
+        ttftMs: json['ttftMs'] as int?,
+        totalMs: json['totalMs'] as int?,
       );
 }
 
@@ -152,6 +166,35 @@ class LlmState extends ChangeNotifier {
 
   // ── Chat actions ───────────────────────────────────────────────────────────
 
+  Future<void> tryAutoLoadModel() async {
+    final svc = LlmService.instance;
+    if (svc.status == LlmStatus.loading ||
+        svc.status == LlmStatus.generating ||
+        svc.isReady) {
+      return;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final path = prefs.getString('ai_chat.model_path');
+      if (path == null || path.isEmpty) {
+        debugPrint('[LlmState] tryAutoLoadModel: no saved model path');
+        return;
+      }
+      if (!await File(path).exists()) {
+        debugPrint('[LlmState] tryAutoLoadModel: file missing: $path');
+        return;
+      }
+      // Pre-warm RAG chunks in parallel (idempotent — safe to call multiple times).
+      unawaited(LegacyRag.initialize());
+      await Profiler.span(
+        'chat.autoLoadModel',
+        () => svc.loadModel(path),
+      );
+    } catch (e) {
+      debugPrint('[LlmState] tryAutoLoadModel failed: $e');
+    }
+  }
+
   Future<void> sendMessage(String text, {bool isArabic = false}) async {
     if (!isModelReady || isGenerating) return;
     final trimmed = text.trim();
@@ -170,22 +213,59 @@ class LlmState extends ChangeNotifier {
     notifyListeners();
     unawaited(_persist());
 
+    final sendSw = Stopwatch()..start();
+    var firstToken = true;
+    // Word-boundary buffer: collect raw tokens (often subword pieces) and only
+    // flush to the message text when a natural break appears, or after a small
+    // length cap. Makes streaming look like word-by-word typing instead of
+    // character-by-character jitter.
+    final tokenBuffer = StringBuffer();
+    const flushChars = <int>{
+      0x20, 0x09, 0x0A, 0x0D, // space, tab, LF, CR
+      0x2C, 0x2E, 0x3B, 0x3A, 0x21, 0x3F, // , . ; : ! ?
+      0x060C, 0x061B, 0x061F, // Arabic comma, semicolon, question mark
+    };
+    void flush() {
+      if (tokenBuffer.isEmpty) return;
+      aiMessage.text += tokenBuffer.toString();
+      tokenBuffer.clear();
+      convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
+      notifyListeners();
+    }
+
     try {
       final stream = LlmService.instance.generateStream(trimmed, isArabic: isArabic);
 
       _streamSubscription = stream.listen(
         (token) {
-          aiMessage.text += token;
-          convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
-          notifyListeners();
+          if (firstToken) {
+            firstToken = false;
+            final ttft = sendSw.elapsedMilliseconds;
+            aiMessage.ttftMs = ttft;
+            Profiler.event(
+              'chat.firstToken',
+              data: <String, Object?>{'ms': ttft},
+            );
+          }
+          tokenBuffer.write(token);
+          final last = token.isNotEmpty ? token.codeUnitAt(token.length - 1) : 0;
+          if (flushChars.contains(last) || tokenBuffer.length >= 16) {
+            flush();
+          }
         },
         onDone: () {
+          flush();
+          sendSw.stop();
+          final total = sendSw.elapsedMilliseconds;
+          aiMessage.totalMs = total;
+          Profiler.recordSpan('chat.sendMessage', total);
           aiMessage.isStreaming = false;
           convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
           notifyListeners();
           unawaited(_persist());
         },
         onError: (Object e) {
+          flush();
           aiMessage.text = 'Error: ${e.toString()}';
           aiMessage.isStreaming = false;
           notifyListeners();

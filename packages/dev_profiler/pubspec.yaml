@@ -1,0 +1,20 @@
+name: dev_profiler
+description: Debug-only profiler. Records span durations, memory deltas, events and counters. Tree-shaken in release.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.4
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  path_provider: ^2.1.4
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+  flutter_test:
+    sdk: flutter
+
+resolution: workspace

@@ -16,6 +16,7 @@ workspace:
   - packages/audio_voice
   - packages/biometric_estimators
   - packages/bluetooth_mesh
+  - packages/dev_profiler
   - packages/offline_data
   - packages/security_crypto
   - packages/sensor_availability

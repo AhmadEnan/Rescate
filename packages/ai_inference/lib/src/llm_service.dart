@@ -1,7 +1,9 @@
 // packages/ai_inference/lib/src/llm_service.dart
 
 import 'dart:async';
+import 'dart:io';
 
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
 
@@ -74,36 +76,41 @@ class LlmService extends ChangeNotifier {
   /// Safe to call multiple times — will unload a previously loaded model first.
   /// Throws [LlmException] if loading fails.
   Future<void> loadModel(String modelPath) async {
-    if (_status == LlmStatus.generating) {
-      throw const LlmException('Cannot load a new model while generating.');
-    }
+    return Profiler.span('llm.loadModel', () async {
+      if (_status == LlmStatus.generating) {
+        throw const LlmException('Cannot load a new model while generating.');
+      }
 
-    // Unload any existing model first.
-    if (_status == LlmStatus.ready || _engine != null) {
-      await _unloadSilently();
-    }
+      // Unload any existing model first.
+      if (_status == LlmStatus.ready || _engine != null) {
+        await _unloadSilently();
+      }
 
-    _setStatus(LlmStatus.loading);
-    _lastError = null;
+      _setStatus(LlmStatus.loading);
+      _lastError = null;
 
-    try {
-      _engine = LlamaEngine(LlamaBackend());
-      final params = LlmDefaults.buildModelParams();
-      
-      await _engine!.loadModel(modelPath, modelParams: params);
-      
-      // Load RAG chunks into memory if not already loaded.
-      await LegacyRag.initialize();
+      try {
+        _engine = LlamaEngine(LlamaBackend());
+        final params = LlmDefaults.buildModelParams();
 
-      _loadedModelPath = modelPath;
-      _setStatus(LlmStatus.ready);
-      debugPrint('[LlmService] Model loaded: $modelPath');
-    } catch (e) {
-      _lastError = e.toString();
-      _loadedModelPath = null;
-      _setStatus(LlmStatus.error);
-      rethrow;
-    }
+        await Profiler.span(
+          'llm.engine.loadModel',
+          () => _engine!.loadModel(modelPath, modelParams: params),
+        );
+
+        // Load RAG chunks into memory if not already loaded.
+        await Profiler.span('rag.initialize', LegacyRag.initialize);
+
+        _loadedModelPath = modelPath;
+        _setStatus(LlmStatus.ready);
+        debugPrint('[LlmService] Model loaded: $modelPath');
+      } catch (e) {
+        _lastError = e.toString();
+        _loadedModelPath = null;
+        _setStatus(LlmStatus.error);
+        rethrow;
+      }
+    });
   }
 
   /// Unloads the current model and releases native memory.
@@ -131,19 +138,40 @@ class LlmService extends ChangeNotifier {
 
     _setStatus(LlmStatus.generating);
 
+    final totalSw = Stopwatch()..start();
+    final ttftSw = Stopwatch()..start();
+    final rssStart = _profileRssStart();
+    var firstTokenSeen = false;
+    var tokenCount = 0;
+
+    // KV prefix reuse: rely on llamadart's in-session `reusePromptPrefix`
+    // (set on GenerationParams below). The disk-based stateSaveFile/Load
+    // path was unsound — the engine's KV at save time held the FULL turn,
+    // not just the system prefix, so loading it on the next turn confused
+    // the prefix matcher. Revisit only if measurements show a cross-session
+    // win is worth the engineering. For now drop it.
     try {
-      final chunks = LegacyRag.search(userMessage, topK: 2);
-      final fullPrompt = LegacyRag.buildPrompt(
-        question: userMessage,
-        chunks: chunks,
+      final chunks = Profiler.spanSync(
+        'rag.search',
+        () => LegacyRag.search(userMessage, topK: 2),
+      );
+      Profiler.count('rag.chunks.searched', chunks.length);
+
+      final fullPrompt = Profiler.spanSync(
+        'rag.buildPrompt',
+        () => LegacyRag.buildPrompt(
+          question: userMessage,
+          chunks: chunks,
+        ),
       );
 
-      final params = const GenerationParams(
+      const params = GenerationParams(
         temp: LlmDefaults.temperature,
         topP: LlmDefaults.topP,
         topK: LlmDefaults.topK,
         penalty: LlmDefaults.repeatPenalty,
         maxTokens: LlmDefaults.maxTokens,
+        reusePromptPrefix: true,
       );
 
       final stream = _engine!.generate(
@@ -152,18 +180,55 @@ class LlmService extends ChangeNotifier {
       );
 
       await for (final token in stream) {
+        if (!firstTokenSeen) {
+          firstTokenSeen = true;
+          ttftSw.stop();
+          Profiler.event(
+            'llm.ttft',
+            data: <String, Object?>{'ms': ttftSw.elapsedMilliseconds},
+          );
+        }
+        tokenCount++;
         yield token;
       }
+      Profiler.count('llm.tokens', tokenCount);
     } catch (e) {
       _lastError = e.toString();
       _setStatus(LlmStatus.error);
       throw LlmException('Generation failed: $e');
     } finally {
+      totalSw.stop();
+      _profileRecordGenerateStream(totalSw.elapsedMilliseconds, rssStart);
       // Only reset to ready if we didn't hit an error.
       if (_status == LlmStatus.generating) {
         _setStatus(LlmStatus.ready);
       }
     }
+  }
+
+  // Helpers around Profiler for the async* generator (which can't use Profiler.span).
+  int _profileRssStart() {
+    if (kReleaseMode) return 0;
+    try {
+      return ProcessInfo.currentRss;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  void _profileRecordGenerateStream(int ms, int rssStart) {
+    if (kReleaseMode) return;
+    try {
+      var delta = 0;
+      try {
+        delta = ProcessInfo.currentRss - rssStart;
+      } catch (_) {}
+      Profiler.recordSpan(
+        'llm.generateStream.total',
+        ms,
+        rssDeltaBytes: delta,
+      );
+    } catch (_) {}
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
