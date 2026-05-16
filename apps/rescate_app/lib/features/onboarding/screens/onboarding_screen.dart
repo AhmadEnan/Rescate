@@ -11,114 +11,125 @@ const Map<String, List<Map<String, String>>> _localizedContent = {
   'English': [
     {
       'title': 'Language Selection',
-      'desc': 'Choose your preferred language to get a personalized experience tailored just for you.'
+      'desc':
+          'Choose your preferred language to get a personalized experience tailored just for you.',
     },
     {
       'title': 'Offline First',
-      'desc': 'Access medical guides and emergency AI even without an internet connection.'
+      'desc':
+          'Access medical guides and emergency AI even without an internet connection.',
     },
     {
       'title': 'Rescate',
-      'desc': 'Connect directly with nearby responders when cellular networks fail.'
-    }
+      'desc':
+          'Connect directly with nearby responders when cellular networks fail.',
+    },
   ],
   'Español': [
     {
       'title': 'Selección de Idioma',
-      'desc': 'Elige tu idioma preferido para obtener una experiencia personalizada adaptada a ti.'
+      'desc':
+          'Elige tu idioma preferido para obtener una experiencia personalizada adaptada a ti.',
     },
     {
       'title': 'Primero Sin Conexión',
-      'desc': 'Accede a guías médicas y a la IA de emergencia incluso sin conexión a internet.'
+      'desc':
+          'Accede a guías médicas y a la IA de emergencia incluso sin conexión a internet.',
     },
     {
       'title': 'Rescate',
-      'desc': 'Conéctate directamente con los socorristas cercanos cuando fallan las redes celulares.'
-    }
+      'desc':
+          'Conéctate directamente con los socorristas cercanos cuando fallan las redes celulares.',
+    },
   ],
   'Français': [
     {
       'title': 'Sélection de la Langue',
-      'desc': 'Choisissez votre langue préférée pour obtenir une expérience personnalisée adaptée à vos besoins.'
+      'desc':
+          'Choisissez votre langue préférée pour obtenir une expérience personnalisée adaptée à vos besoins.',
     },
     {
       'title': 'Priorité Hors Ligne',
-      'desc': 'Accédez aux guides médicaux et à l\'IA d\'urgence même sans connexion Internet.'
+      'desc':
+          'Accédez aux guides médicaux et à l\'IA d\'urgence même sans connexion Internet.',
     },
     {
       'title': 'Rescate',
-      'desc': 'Connectez-vous directement avec les intervenants à proximité lorsque les réseaux cellulaires échouent.'
-    }
+      'desc':
+          'Connectez-vous directement avec les intervenants à proximité lorsque les réseaux cellulaires échouent.',
+    },
   ],
   'Deutsch': [
     {
       'title': 'Sprachauswahl',
-      'desc': 'Wählen Sie Ihre bevorzugte Sprache, um ein auf Sie zugeschnittenes Erlebnis zu erhalten.'
+      'desc':
+          'Wählen Sie Ihre bevorzugte Sprache, um ein auf Sie zugeschnittenes Erlebnis zu erhalten.',
     },
     {
       'title': 'Offline Zuerst',
-      'desc': 'Greifen Sie auch ohne Internetverbindung auf medizinische Leitfäden und Notfall-KI zu.'
+      'desc':
+          'Greifen Sie auch ohne Internetverbindung auf medizinische Leitfäden und Notfall-KI zu.',
     },
     {
       'title': 'Rescate',
-      'desc': 'Verbinden Sie sich direkt mit Helfern in der Nähe, wenn Mobilfunknetze ausfallen.'
-    }
+      'desc':
+          'Verbinden Sie sich direkt mit Helfern in der Nähe, wenn Mobilfunknetze ausfallen.',
+    },
   ],
   'Português': [
     {
       'title': 'Seleção de Idioma',
-      'desc': 'Escolha o seu idioma preferido para obter uma experiência personalizada adaptada para você.'
+      'desc':
+          'Escolha o seu idioma preferido para obter uma experiência personalizada adaptada para você.',
     },
     {
       'title': 'Primeiro Offline',
-      'desc': 'Acesse guias médicos e IA de emergência mesmo sem conexão com a internet.'
+      'desc':
+          'Acesse guias médicos e IA de emergência mesmo sem conexão com a internet.',
     },
     {
       'title': 'Rescate',
-      'desc': 'Conecte-se diretamente com socorristas próximos quando as redes de celular falharem.'
-    }
+      'desc':
+          'Conecte-se diretamente com socorristas próximos quando as redes de celular falharem.',
+    },
   ],
   'العربية': [
     {
       'title': 'اختيار اللغة',
-      'desc': 'اختر لغتك المفضلة للحصول على تجربة مخصصة لك بالكامل.'
+      'desc': 'اختر لغتك المفضلة للحصول على تجربة مخصصة لك بالكامل.',
     },
     {
       'title': 'العمل بدون إنترنت',
-      'desc': 'الوصول إلى الأدلة الطبية والذكاء الاصطناعي للطوارئ حتى بدون اتصال بالإنترنت.'
+      'desc':
+          'الوصول إلى الأدلة الطبية والذكاء الاصطناعي للطوارئ حتى بدون اتصال بالإنترنت.',
     },
     {
       'title': 'Rescate',
-      'desc': 'تواصل مباشرة مع المستجيبين القريبين عندما تفشل شبكات الاتصال الخلوي.'
-    }
+      'desc':
+          'تواصل مباشرة مع المستجيبين القريبين عندما تفشل شبكات الاتصال الخلوي.',
+    },
   ],
   'हिन्दी': [
     {
       'title': 'भाषा चयन',
-      'desc': 'अपने लिए तैयार किया गया व्यक्तिगत अनुभव प्राप्त करने के लिए अपनी पसंदीदा भाषा चुनें।'
+      'desc':
+          'अपने लिए तैयार किया गया व्यक्तिगत अनुभव प्राप्त करने के लिए अपनी पसंदीदा भाषा चुनें।',
     },
     {
       'title': 'ऑफ़लाइन प्रथम',
-      'desc': 'इंटरनेट कनेक्शन के बिना भी चिकित्सा गाइड और आपातकालीन एआई तक पहुंचें।'
+      'desc':
+          'इंटरनेट कनेक्शन के बिना भी चिकित्सा गाइड और आपातकालीन एआई तक पहुंचें।',
     },
     {
       'title': 'Rescate',
-      'desc': 'सेलुलर नेटवर्क विफल होने पर सीधे आस-पास के उत्तरदाताओं से जुड़ें।'
-    }
+      'desc':
+          'सेलुलर नेटवर्क विफल होने पर सीधे आस-पास के उत्तरदाताओं से जुड़ें।',
+    },
   ],
   '中文': [
-    {
-      'title': '语言选择',
-      'desc': '选择您偏好的语言，以获得为您量身定制的个性化体验。'
-    },
-    {
-      'title': '离线优先',
-      'desc': '即使没有互联网连接，也能访问医疗指南和紧急AI。'
-    },
-    {
-      'title': 'Rescate',
-      'desc': '当蜂窝网络失效时，直接与附近的救援人员联系。'
-    }
+    {'title': '语言选择', 'desc': '选择您偏好的语言，以获得为您量身定制的个性化体验。'},
+    {'title': '离线优先', 'desc': '即使没有互联网连接，也能访问医疗指南和紧急AI。'},
+    {'title': 'Rescate', 'desc': '当蜂窝网络失效时，直接与附近的救援人员联系。'},
   ],
 };
 
@@ -130,16 +141,16 @@ const Map<String, String> _localizedSelectLanguage = {
   'Português': 'Selecionar Idioma',
   'العربية': 'اختر اللغة',
   'हिन्दी': 'भाषा चुनें',
-  '中文': '选择语言'
+  '中文': '选择语言',
 };
 
 // ─── Color Palette ────────────────────────────────────────────────────────────
 class _OnboardingColors {
-  static const background  = Color(0xFFEAE3DC);
-  static const textBrown   = Color(0xFF3B2226);
-  static const textGreen   = Color(0xFF2D4A35);
-  static const panelMauve  = Color(0xFFB08085);
-  static const panelGreen  = Color(0xFF7EAF82);
+  static const background = Color(0xFFEAE3DC);
+  static const textBrown = Color(0xFF3B2226);
+  static const textGreen = Color(0xFF2D4A35);
+  static const panelMauve = Color(0xFFB08085);
+  static const panelGreen = Color(0xFF7EAF82);
   static const borderBrown = Color(0xFF5A3840);
   static const borderGreen = Color(0xFF3D6647);
 }
@@ -162,13 +173,22 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final _pageController = PageController();
-  double _pageProgress   = 0.0;
+  double _pageProgress = 0.0;
   String _selectedLanguage = 'English';
 
   static const List<_PageData> _pages = [
-    _PageData(textColor: _OnboardingColors.textBrown, logoPosition: _LogoPosition.bottomLeft),
-    _PageData(textColor: _OnboardingColors.textGreen, logoPosition: _LogoPosition.bottomRight),
-    _PageData(textColor: _OnboardingColors.textBrown, logoPosition: _LogoPosition.topCenter),
+    _PageData(
+      textColor: _OnboardingColors.textBrown,
+      logoPosition: _LogoPosition.bottomLeft,
+    ),
+    _PageData(
+      textColor: _OnboardingColors.textGreen,
+      logoPosition: _LogoPosition.bottomRight,
+    ),
+    _PageData(
+      textColor: _OnboardingColors.textBrown,
+      logoPosition: _LogoPosition.topCenter,
+    ),
   ];
 
   @override
@@ -202,7 +222,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Container(
               padding: const EdgeInsets.all(24),
               constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.7),
+                maxHeight: MediaQuery.of(context).size.height * 0.7,
+              ),
               decoration: const BoxDecoration(
                 color: _OnboardingColors.background,
                 borderRadius: BorderRadius.only(
@@ -240,8 +261,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: _localizedContent.keys
-                              .map((lang) =>
-                                  _buildLangOption(lang, setModalState))
+                              .map(
+                                (lang) => _buildLangOption(lang, setModalState),
+                              )
                               .toList(),
                         ),
                       ),
@@ -264,17 +286,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         setModalState(() => _selectedLanguage = name);
         setState(() => _selectedLanguage = name);
         AppStateProvider.of(context).setLanguage(name);
-        Future.delayed(
-            const Duration(milliseconds: 300),
-            () { if (mounted) Navigator.pop(context); });
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) Navigator.pop(context);
+        });
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: isSelected
-              ? _OnboardingColors.textBrown
-              : Colors.transparent,
+          color: isSelected ? _OnboardingColors.textBrown : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
@@ -288,11 +308,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               name,
               style: GoogleFonts.poppins(
                 fontSize: 16,
-                fontWeight:
-                    isSelected ? FontWeight.w600 : FontWeight.w500,
-                color: isSelected
-                    ? Colors.white
-                    : _OnboardingColors.textBrown,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? Colors.white : _OnboardingColors.textBrown,
               ),
             ),
             const Spacer(),
@@ -307,18 +324,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // ── Build ───────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final size  = MediaQuery.of(context).size;
-    final p     = _pageProgress.clamp(0.0, 2.0);
+    final size = MediaQuery.of(context).size;
+    final p = _pageProgress.clamp(0.0, 2.0);
     final panelH = size.height * 0.5;
     const radius = 28.0;
     const borderW = 8.0;
 
     // ── Derive panel geometry from scroll progress ──────────────────────────
     final Alignment panelAlignment;
-    final double    panelW;
-    final Color     panelColor1, panelColor2;
-    final Color     topBorderColor, leftBorderColor, rightBorderColor;
-    final double    topLeftRadius, topRightRadius;
+    final double panelW;
+    final Color panelColor1, panelColor2;
+    final Color topBorderColor, leftBorderColor, rightBorderColor;
+    final double topLeftRadius, topRightRadius;
     final Alignment logoAlignment;
 
     const b0 = _OnboardingColors.borderBrown;
@@ -326,28 +343,56 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     const b2 = _OnboardingColors.borderBrown;
 
     if (p <= 1.0) {
-      panelAlignment  = Alignment.lerp(Alignment.bottomRight, Alignment.bottomLeft, p)!;
-      panelW          = size.width * 0.5;
-      panelColor1     = Color.lerp(_OnboardingColors.panelMauve, _OnboardingColors.panelGreen, p)!;
-      panelColor2     = panelColor1;
-      topBorderColor  = Color.lerp(b0, b1, p)!;
-      leftBorderColor  = Color.lerp(topBorderColor, Colors.transparent, p)!;
+      panelAlignment = Alignment.lerp(
+        Alignment.bottomRight,
+        Alignment.bottomLeft,
+        p,
+      )!;
+      panelW = size.width * 0.5;
+      panelColor1 = Color.lerp(
+        _OnboardingColors.panelMauve,
+        _OnboardingColors.panelGreen,
+        p,
+      )!;
+      panelColor2 = panelColor1;
+      topBorderColor = Color.lerp(b0, b1, p)!;
+      leftBorderColor = Color.lerp(topBorderColor, Colors.transparent, p)!;
       rightBorderColor = Color.lerp(Colors.transparent, topBorderColor, p)!;
-      topLeftRadius   = lerpDouble(radius, 0.0, p)!;
-      topRightRadius  = lerpDouble(0.0, radius, p)!;
-      logoAlignment   = Alignment.lerp(Alignment.bottomLeft, Alignment.bottomRight, p)!;
+      topLeftRadius = lerpDouble(radius, 0.0, p)!;
+      topRightRadius = lerpDouble(0.0, radius, p)!;
+      logoAlignment = Alignment.lerp(
+        Alignment.bottomLeft,
+        Alignment.bottomRight,
+        p,
+      )!;
     } else {
-      final t         = p - 1.0;
-      panelAlignment  = Alignment.lerp(Alignment.bottomLeft, Alignment.bottomCenter, t)!;
-      panelW          = lerpDouble(size.width * 0.5, size.width, t)!;
-      panelColor1     = Color.lerp(_OnboardingColors.panelGreen, _OnboardingColors.panelMauve, t)!;
-      panelColor2     = Color.lerp(_OnboardingColors.panelGreen, _OnboardingColors.panelGreen, t)!;
-      topBorderColor  = Color.lerp(b1, b2, t)!;
-      leftBorderColor  = Color.lerp(Colors.transparent, topBorderColor, t)!;
+      final t = p - 1.0;
+      panelAlignment = Alignment.lerp(
+        Alignment.bottomLeft,
+        Alignment.bottomCenter,
+        t,
+      )!;
+      panelW = lerpDouble(size.width * 0.5, size.width, t)!;
+      panelColor1 = Color.lerp(
+        _OnboardingColors.panelGreen,
+        _OnboardingColors.panelMauve,
+        t,
+      )!;
+      panelColor2 = Color.lerp(
+        _OnboardingColors.panelGreen,
+        _OnboardingColors.panelGreen,
+        t,
+      )!;
+      topBorderColor = Color.lerp(b1, b2, t)!;
+      leftBorderColor = Color.lerp(Colors.transparent, topBorderColor, t)!;
       rightBorderColor = topBorderColor;
-      topLeftRadius   = lerpDouble(0.0, radius, t)!;
-      topRightRadius  = radius;
-      logoAlignment   = Alignment.lerp(Alignment.bottomRight, Alignment.topCenter, t)!;
+      topLeftRadius = lerpDouble(0.0, radius, t)!;
+      topRightRadius = radius;
+      logoAlignment = Alignment.lerp(
+        Alignment.bottomRight,
+        Alignment.topCenter,
+        t,
+      )!;
     }
 
     final currentIndex = p.round().clamp(0, 2);
@@ -364,10 +409,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-
             // ── 1. Panel & Icons ────────────────────────────────────────────
             Positioned(
-              left: 0, right: 0, bottom: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
               height: panelH,
               child: Align(
                 alignment: panelAlignment,
@@ -377,12 +423,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   decoration: BoxDecoration(
                     // Using CustomPaint for borders since non-uniform colored borders with borderRadius throw an error
                     borderRadius: BorderRadius.only(
-                      topLeft:  Radius.circular(topLeftRadius),
+                      topLeft: Radius.circular(topLeftRadius),
                       topRight: Radius.circular(topRightRadius),
                     ),
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
-                      end:   Alignment.bottomCenter,
+                      end: Alignment.bottomCenter,
                       colors: [panelColor1, panelColor2],
                     ),
                   ),
@@ -397,59 +443,62 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.only(
-                      topLeft:  Radius.circular(topLeftRadius),
-                      topRight: Radius.circular(topRightRadius),
+                        topLeft: Radius.circular(topLeftRadius),
+                        topRight: Radius.circular(topRightRadius),
+                      ),
+                      child: Stack(
+                        children: [
+                          // Page 1 — Globe (Half clipped on the right edge)
+                          if (p < 1.0)
+                            Positioned(
+                              right: -(panelH * 0.5),
+                              top: -(panelH * 0.001),
+                              width: panelH * 0.95,
+                              height: panelH * 0.95,
+                              child: Opacity(
+                                opacity: ((1.0 - p) * 0.20).clamp(0.0, 0.20),
+                                child: Icon(
+                                  LucideIcons.globe,
+                                  size: panelH * 0.95,
+                                  color: _OnboardingColors.borderBrown,
+                                ),
+                              ),
+                            ),
+                          // Page 2 — WifiOff (Half clipped on the left edge)
+                          if (p > 0.0 && p < 2.0)
+                            Positioned(
+                              left: -(panelH * 0.28),
+                              top: -(panelH * 0.08),
+                              width: panelH * 0.95,
+                              height: panelH * 0.95,
+                              child: Opacity(
+                                opacity: ((1.0 - (p - 1.0).abs()) * 0.20).clamp(
+                                  0.0,
+                                  0.20,
+                                ),
+                                child: Icon(
+                                  LucideIcons.wifiOff,
+                                  size: panelH * 0.95,
+                                  color: _OnboardingColors.borderGreen,
+                                ),
+                              ),
+                            ),
+                          // Page 3 — Radio (Centered, fully filling the rect, NOT clipped)
+                          if (p > 1.0)
+                            Align(
+                              alignment: Alignment.center,
+                              child: Opacity(
+                                opacity: ((p - 1.0) * 0.20).clamp(0.0, 0.20),
+                                child: Icon(
+                                  LucideIcons.radio,
+                                  size: panelH * 0.6,
+                                  color: _OnboardingColors.borderBrown,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    child: Stack(
-                      children: [
-                        // Page 1 — Globe (Half clipped on the right edge)
-                        if (p < 1.0)
-                          Positioned(
-                            right:  -(panelH * 0.5),
-                            top:    -(panelH * 0.001),
-                            width:  panelH * 0.95,
-                            height: panelH * 0.95,
-                            child: Opacity(
-                              opacity: ((1.0 - p) * 0.20).clamp(0.0, 0.20),
-                              child: Icon(
-                                LucideIcons.globe,
-                                size:  panelH * 0.95,
-                                color: _OnboardingColors.borderBrown,
-                              ),
-                            ),
-                          ),
-                        // Page 2 — WifiOff (Half clipped on the left edge)
-                        if (p > 0.0 && p < 2.0)
-                          Positioned(
-                            left:   -(panelH * 0.28),
-                            top:    -(panelH * 0.08),
-                            width:  panelH * 0.95,
-                            height: panelH * 0.95,
-                            child: Opacity(
-                              opacity: ((1.0 - (p - 1.0).abs()) * 0.20).clamp(0.0, 0.20),
-                              child: Icon(
-                                LucideIcons.wifiOff,
-                                size:  panelH * 0.95,
-                                color: _OnboardingColors.borderGreen,
-                              ),
-                            ),
-                          ),
-                        // Page 3 — Radio (Centered, fully filling the rect, NOT clipped)
-                        if (p > 1.0)
-                          Align(
-                            alignment: Alignment.center,
-                            child: Opacity(
-                              opacity: ((p - 1.0) * 0.20).clamp(0.0, 0.20),
-                              child: Icon(
-                                LucideIcons.radio,
-                                size: panelH * 0.6,
-                                color: _OnboardingColors.borderBrown,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
                   ),
                 ),
               ),
@@ -459,13 +508,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Positioned.fill(
               child: Padding(
                 padding: const EdgeInsets.only(
-                    left: 32, right: 32, bottom: 36, top: 60),
+                  left: 32,
+                  right: 32,
+                  bottom: 36,
+                  top: 60,
+                ),
                 child: Align(
                   alignment: logoAlignment,
-                  child: SizedBox(
+                  child: Container(
                     width: 48,
                     height: 48,
-                    child: Image.asset('assets/logo.png'),
+                    decoration: const BoxDecoration(
+                      color: _OnboardingColors.borderBrown,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      LucideIcons.radio,
+                      color: Colors.white,
+                      size: 26,
+                    ),
                   ),
                 ),
               ),
@@ -480,14 +541,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 pageIndex: i,
                 selectedLanguage: _selectedLanguage,
                 onLanguageTap: _showLanguageModal,
-                title:       _localizedContent[_selectedLanguage]![i]['title']!,
+                title: _localizedContent[_selectedLanguage]![i]['title']!,
                 description: _localizedContent[_selectedLanguage]![i]['desc']!,
               ),
             ),
 
             // ── 5. Top progress dashes ───────────────────────────────────────
             Positioned(
-              top: 16, left: 32, right: 32,
+              top: 16,
+              left: 32,
+              right: 32,
               child: Row(
                 children: List.generate(3, (i) {
                   return Expanded(
@@ -497,8 +560,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       height: 3,
                       margin: EdgeInsets.only(right: i < 2 ? 8 : 0),
                       decoration: BoxDecoration(
-                        color: _pages[currentIndex].textColor
-                            .withOpacity(i == currentIndex ? 0.8 : 0.2),
+                        color: _pages[currentIndex].textColor.withOpacity(
+                          i == currentIndex ? 0.8 : 0.2,
+                        ),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -509,7 +573,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
             // ── 6. Next / Start button ───────────────────────────────────────
             Positioned(
-              bottom: nextButtonBottom, right: 32,
+              bottom: nextButtonBottom,
+              right: 32,
               child: GestureDetector(
                 onTap: () async {
                   final next = currentIndex + 1;
@@ -525,14 +590,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     if (!mounted) return;
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (_) => MainScreen(key: mainScreenKey)),
+                      MaterialPageRoute(
+                        builder: (_) => MainScreen(key: mainScreenKey),
+                      ),
                     );
                   }
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 28, vertical: 14),
+                    horizontal: 28,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: _pages[currentIndex].textColor,
                     borderRadius: BorderRadius.circular(30),
@@ -546,12 +615,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       letterSpacing: 0.3,
                     ),
                     child: Text(
-                        currentIndex == _pages.length - 1 ? 'Start' : 'Next'),
+                      currentIndex == _pages.length - 1 ? 'Start' : 'Next',
+                    ),
                   ),
                 ),
               ),
             ),
-
           ],
         ),
       ),
@@ -559,15 +628,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-
 // ─── Individual page (text + language picker only) ────────────────────────────
 class _OnboardingPage extends StatelessWidget {
-  final _PageData  data;
-  final int        pageIndex;
-  final String     selectedLanguage;
+  final _PageData data;
+  final int pageIndex;
+  final String selectedLanguage;
   final VoidCallback onLanguageTap;
-  final String     title;
-  final String     description;
+  final String title;
+  final String description;
 
   const _OnboardingPage({
     required this.data,
@@ -580,7 +648,7 @@ class _OnboardingPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPage3  = pageIndex == 2;
+    final isPage3 = pageIndex == 2;
     final isArabic = selectedLanguage == 'العربية';
 
     return Directionality(
@@ -588,21 +656,22 @@ class _OnboardingPage extends StatelessWidget {
       child: Stack(
         children: [
           Positioned(
-            top:   isPage3 ? 130 : 70,
-            left:  28,
+            top: isPage3 ? 130 : 70,
+            left: 28,
             right: 28,
             child: Column(
-              crossAxisAlignment:
-                  isPage3 ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+              crossAxisAlignment: isPage3
+                  ? CrossAxisAlignment.center
+                  : CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
                   textAlign: isPage3 ? TextAlign.center : TextAlign.start,
                   style: GoogleFonts.poppins(
-                    fontSize:     isPage3 ? 70 :48,
-                    fontWeight:   FontWeight.w900,
-                    color:        data.textColor,
-                    height:       1.05,
+                    fontSize: isPage3 ? 70 : 48,
+                    fontWeight: FontWeight.w900,
+                    color: data.textColor,
+                    height: 1.05,
                     letterSpacing: -0.5,
                   ),
                 ),
@@ -612,8 +681,8 @@ class _OnboardingPage extends StatelessWidget {
                   textAlign: isPage3 ? TextAlign.center : TextAlign.start,
                   style: GoogleFonts.poppins(
                     fontSize: 15,
-                    color:    data.textColor.withOpacity(0.75),
-                    height:   1.55,
+                    color: data.textColor.withOpacity(0.75),
+                    height: 1.55,
                   ),
                 ),
                 if (pageIndex == 0) ...[
@@ -622,30 +691,39 @@ class _OnboardingPage extends StatelessWidget {
                     onTap: onLanguageTap,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 16),
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                            color: data.textColor.withOpacity(0.15)),
+                          color: data.textColor.withOpacity(0.15),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(LucideIcons.globe,
-                              color: data.textColor, size: 20),
+                          Icon(
+                            LucideIcons.globe,
+                            color: data.textColor,
+                            size: 20,
+                          ),
                           const SizedBox(width: 12),
                           Text(
                             selectedLanguage,
                             style: GoogleFonts.poppins(
-                              fontSize:   16,
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color:      data.textColor,
+                              color: data.textColor,
                             ),
                           ),
                           const SizedBox(width: 16),
-                          Icon(LucideIcons.chevronDown,
-                              color: data.textColor, size: 20),
+                          Icon(
+                            LucideIcons.chevronDown,
+                            color: data.textColor,
+                            size: 20,
+                          ),
                         ],
                       ),
                     ),
@@ -683,7 +761,10 @@ class _PanelBorderPainter extends CustomPainter {
 
     // LEFT BORDER
     if (leftColor.alpha > 0) {
-      final pLeft = Paint()..color = leftColor..style = PaintingStyle.stroke..strokeWidth = width;
+      final pLeft = Paint()
+        ..color = leftColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width;
       final path = Path();
       path.moveTo(halfW, size.height);
       final leftStartY = topLeftRadius > halfW ? topLeftRadius : halfW;
@@ -700,7 +781,10 @@ class _PanelBorderPainter extends CustomPainter {
 
     // RIGHT BORDER
     if (rightColor.alpha > 0) {
-      final pRight = Paint()..color = rightColor..style = PaintingStyle.stroke..strokeWidth = width;
+      final pRight = Paint()
+        ..color = rightColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width;
       final path = Path();
       path.moveTo(size.width - halfW, size.height);
       final rightStartY = topRightRadius > halfW ? topRightRadius : halfW;
@@ -717,10 +801,15 @@ class _PanelBorderPainter extends CustomPainter {
 
     // TOP BORDER
     if (topColor.alpha > 0) {
-      final pTop = Paint()..color = topColor..style = PaintingStyle.stroke..strokeWidth = width;
+      final pTop = Paint()
+        ..color = topColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width;
       final path = Path();
       final startX = topLeftRadius > halfW ? topLeftRadius : halfW;
-      final endX = topRightRadius > halfW ? size.width - topRightRadius : size.width - halfW;
+      final endX = topRightRadius > halfW
+          ? size.width - topRightRadius
+          : size.width - halfW;
       path.moveTo(startX, halfW);
       path.lineTo(endX, halfW);
       canvas.drawPath(path, pTop);

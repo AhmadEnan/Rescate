@@ -1,0 +1,24 @@
+name: bluetooth_mesh
+description: Module 4 - Offline Bluetooth/Wi-Fi mesh networking (Google Nearby Connections).
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.4
+  flutter: ">=3.19.0"
+
+dependencies:
+  device_info_plus: ^11.0.0
+  flutter:
+    sdk: flutter
+  nearby_connections: ^4.3.0
+  permission_handler: ^12.0.1
+  security_crypto:
+    path: ../security_crypto
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+  flutter_test:
+    sdk: flutter
+
+resolution: workspace

@@ -53,4 +53,9 @@ dependencies {
     // dependency. Adding it explicitly ensures the class is on the compile classpath.
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
     implementation("com.graphhopper:graphhopper-core:1.0")
+    implementation("com.graphhopper:graphhopper-reader-osm:1.0")
+    implementation("org.slf4j:slf4j-simple:1.7.36")
+    // Android does not ship javax.xml.stream (StAX). GraphHopper's OSM XML reader needs it.
+    implementation("javax.xml.stream:stax-api:1.0-2")
+    implementation("com.fasterxml:aalto-xml:1.3.2")
 }

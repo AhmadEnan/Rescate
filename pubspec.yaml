@@ -15,8 +15,7 @@ workspace:
   - packages/ai_inference
   - packages/audio_voice
   - packages/biometric_estimators
+  - packages/bluetooth_mesh
   - packages/offline_data
-  - packages/p2p_mesh
-  - packages/rag_engine
   - packages/security_crypto
   - packages/sensor_availability

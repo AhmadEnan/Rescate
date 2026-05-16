@@ -13,7 +13,7 @@ class TopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Image.asset('assets/logo.png', width: 40, height: 40),
+          const _RescateMark(),
           const Spacer(),
           const _NotificationButton(),
           const SizedBox(width: 8),
@@ -31,12 +31,32 @@ class TopBar extends StatelessWidget {
                 color: AppColors.cardBackground,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(LucideIcons.settings,
-                  size: 20, color: AppColors.textDark),
+              child: const Icon(
+                LucideIcons.settings,
+                size: 20,
+                color: AppColors.textDark,
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RescateMark extends StatelessWidget {
+  const _RescateMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: const BoxDecoration(
+        color: AppColors.primaryRed,
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(LucideIcons.radio, color: Colors.white, size: 22),
     );
   }
 }
@@ -69,7 +89,8 @@ class _NotificationButtonState extends State<_NotificationButton> {
     'title_en': 'Emergency Update',
     'title_ar': 'تحديث حالة الطوارئ',
     'body_en': 'Please check the map for the latest safe zone details.',
-    'body_ar': 'يُرجى التحقق من الخريطة للحصول على تفاصيل أحدث حول المناطق الآمنة.',
+    'body_ar':
+        'يُرجى التحقق من الخريطة للحصول على تفاصيل أحدث حول المناطق الآمنة.',
     'time_en': '2 mins ago',
     'time_ar': 'منذ دقيقتين',
   };
@@ -161,9 +182,11 @@ class _NotificationButtonState extends State<_NotificationButton> {
                               color: AppColors.textDark,
                             ),
                           ),
-                          Icon(LucideIcons.moreHorizontal,
-                              size: 18,
-                              color: AppColors.textDark.withOpacity(0.5)),
+                          Icon(
+                            LucideIcons.moreHorizontal,
+                            size: 18,
+                            color: AppColors.textDark.withOpacity(0.5),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -172,7 +195,13 @@ class _NotificationButtonState extends State<_NotificationButton> {
                         onTap: () {
                           _closeDropdown();
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(isArabic ? 'فتح الإشعار...' : 'Opening notification...')),
+                            SnackBar(
+                              content: Text(
+                                isArabic
+                                    ? 'فتح الإشعار...'
+                                    : 'Opening notification...',
+                              ),
+                            ),
                           );
                         },
                         child: Row(
@@ -185,8 +214,11 @@ class _NotificationButtonState extends State<_NotificationButton> {
                                 color: AppColors.primaryRed.withOpacity(0.1),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(LucideIcons.alertCircle,
-                                  color: AppColors.primaryRed, size: 20),
+                              child: const Icon(
+                                LucideIcons.alertCircle,
+                                color: AppColors.primaryRed,
+                                size: 20,
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -210,12 +242,16 @@ class _NotificationButtonState extends State<_NotificationButton> {
                                         : _currentNotification['body_en']!,
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: AppColors.textDark.withOpacity(0.7),
+                                      color: AppColors.textDark.withOpacity(
+                                        0.7,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    isArabic ? _currentNotification['time_ar']! : _currentNotification['time_en']!,
+                                    isArabic
+                                        ? _currentNotification['time_ar']!
+                                        : _currentNotification['time_en']!,
                                     style: const TextStyle(
                                       fontSize: 10,
                                       color: AppColors.primaryRed,
@@ -260,8 +296,11 @@ class _NotificationButtonState extends State<_NotificationButton> {
                   ? Border.all(color: AppColors.primaryRed, width: 1.5)
                   : null,
             ),
-            child: const Icon(LucideIcons.bell,
-                size: 20, color: AppColors.textDark),
+            child: const Icon(
+              LucideIcons.bell,
+              size: 20,
+              color: AppColors.textDark,
+            ),
           ),
           Positioned(
             top: 0,

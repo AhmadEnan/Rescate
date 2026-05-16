@@ -1,11 +1,12 @@
-import 'dart:ui';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
 import '../../home/widgets/top_bar.dart';
-import '../services/nearby_service.dart';
+import 'package:bluetooth_mesh/bluetooth_mesh.dart';
 import 'bt_chat_screen.dart';
 
 class CommunityScreen extends StatefulWidget {
@@ -19,7 +20,6 @@ class _CommunityScreenState extends State<CommunityScreen>
     with TickerProviderStateMixin {
   final NearbyService _nearby = NearbyService();
   final TextEditingController _nameController = TextEditingController();
-  bool _permissionsGranted = false;
   bool _isActive = false; // advertising + discovering
   late AnimationController _pulseController;
 
@@ -46,18 +46,20 @@ class _CommunityScreenState extends State<CommunityScreen>
   }
 
   Future<void> _requestPermissions() async {
-    final statuses = await [
+    final permissions = <Permission>[
       Permission.bluetooth,
       Permission.bluetoothAdvertise,
       Permission.bluetoothConnect,
       Permission.bluetoothScan,
       Permission.location,
-      Permission.nearbyWifiDevices,
-    ].request();
+    ];
+    if (await _supportsNearbyWifiDevicesPermission()) {
+      permissions.add(Permission.nearbyWifiDevices);
+    }
 
-    final allGranted =
-        statuses.values.every((s) => s.isGranted || s.isLimited);
-    setState(() => _permissionsGranted = allGranted);
+    final statuses = await permissions.request();
+
+    final allGranted = statuses.values.every((s) => s.isGranted || s.isLimited);
 
     if (!allGranted && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -67,10 +69,21 @@ class _CommunityScreenState extends State<CommunityScreen>
           ),
           backgroundColor: Colors.red.shade700,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
+    }
+  }
+
+  Future<bool> _supportsNearbyWifiDevicesPermission() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return false;
+    try {
+      final info = await DeviceInfoPlugin().androidInfo;
+      return info.version.sdkInt >= 33;
+    } on Object {
+      return false;
     }
   }
 
@@ -88,7 +101,10 @@ class _CommunityScreenState extends State<CommunityScreen>
   }
 
   void _handleConnectionChanged(
-      String endpointId, String name, bool connected) {
+    String endpointId,
+    String name,
+    bool connected,
+  ) {
     if (!mounted) return;
     if (connected) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -96,8 +112,9 @@ class _CommunityScreenState extends State<CommunityScreen>
           content: Text('Connected to $name'),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
     }
@@ -109,17 +126,14 @@ class _CommunityScreenState extends State<CommunityScreen>
     Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 400),
-        pageBuilder: (_, __, ___) => BtChatScreen(
-          endpointId: endpointId,
-          endpointName: name,
-        ),
+        pageBuilder: (_, __, ___) =>
+            BtChatScreen(endpointId: endpointId, endpointName: name),
         transitionsBuilder: (_, anim, __, child) {
           return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(1, 0),
-              end: Offset.zero,
-            ).animate(
-                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+            position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+                ),
             child: child,
           );
         },
@@ -131,17 +145,14 @@ class _CommunityScreenState extends State<CommunityScreen>
     Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 400),
-        pageBuilder: (_, __, ___) => BtChatScreen(
-          endpointId: endpointId,
-          endpointName: name,
-        ),
+        pageBuilder: (_, __, ___) =>
+            BtChatScreen(endpointId: endpointId, endpointName: name),
         transitionsBuilder: (_, anim, __, child) {
           return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(1, 0),
-              end: Offset.zero,
-            ).animate(
-                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+            position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+                .animate(
+                  CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+                ),
             child: child,
           );
         },
@@ -178,183 +189,202 @@ class _CommunityScreenState extends State<CommunityScreen>
                 children: [
                   const TopBar(),
 
-              // ── Username field ────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _nameController,
-                        style: const TextStyle(color: AppColors.textDark),
-                        decoration: InputDecoration(
-                          hintText: isArabic
-                              ? 'اسم العرض الخاص بك'
-                              : 'Your display name',
-                          prefixIcon: const Icon(LucideIcons.user,
-                              color: AppColors.primaryRed),
-                          suffixIcon: _isActive
-                              ? const Padding(
-                                  padding: EdgeInsets.only(right: 12),
-                                  child: Icon(LucideIcons.lock,
-                                      size: 18,
-                                      color: AppColors.cardBackgroundLight),
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: AppColors.cardBackground,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(28),
-                            borderSide: BorderSide.none,
+                  // ── Username field ────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _nameController,
+                            style: const TextStyle(color: AppColors.textDark),
+                            decoration: InputDecoration(
+                              hintText: isArabic
+                                  ? 'اسم العرض الخاص بك'
+                                  : 'Your display name',
+                              prefixIcon: const Icon(
+                                LucideIcons.user,
+                                color: AppColors.primaryRed,
+                              ),
+                              suffixIcon: _isActive
+                                  ? const Padding(
+                                      padding: EdgeInsets.only(right: 12),
+                                      child: Icon(
+                                        LucideIcons.lock,
+                                        size: 18,
+                                        color: AppColors.cardBackgroundLight,
+                                      ),
+                                    )
+                                  : null,
+                              filled: true,
+                              fillColor: AppColors.cardBackground,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(28),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 14,
+                              ),
+                            ),
+                            enabled: !_isActive,
+                            onSubmitted: (v) {
+                              if (v.trim().isNotEmpty) {
+                                _nearby.setUserName(v.trim());
+                              }
+                            },
                           ),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 14),
                         ),
-                        enabled: !_isActive,
-                        onSubmitted: (v) {
-                          if (v.trim().isNotEmpty) {
-                            _nearby.setUserName(v.trim());
-                          }
-                        },
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
 
-              // ── Status banner ────────────────────────────
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.easeOutCubic,
-                margin:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: _isActive
-                      ? AppColors.primaryRed
-                      : AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: _isActive
-                      ? [
-                          BoxShadow(
-                            color: AppColors.primaryRed.withOpacity(0.3),
-                            blurRadius: 20,
-                            offset: const Offset(0, 4),
+                  // ── Status banner ────────────────────────────
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOutCubic,
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _isActive
+                          ? AppColors.primaryRed
+                          : AppColors.cardBackground,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: _isActive
+                          ? [
+                              BoxShadow(
+                                color: AppColors.primaryRed.withValues(
+                                  alpha: 0.3,
+                                ),
+                                blurRadius: 20,
+                                offset: const Offset(0, 4),
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: Row(
+                      children: [
+                        if (_isActive)
+                          AnimatedBuilder(
+                            animation: _pulseController,
+                            builder: (_, child) {
+                              return Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.greenAccent,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.greenAccent.withValues(
+                                        alpha: _pulseController.value * 0.7,
+                                      ),
+                                      blurRadius:
+                                          8 + _pulseController.value * 8,
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
                           )
-                        ]
-                      : [],
-                ),
-                child: Row(
-                  children: [
-                    if (_isActive)
-                      AnimatedBuilder(
-                        animation: _pulseController,
-                        builder: (_, child) {
-                          return Container(
+                        else
+                          Container(
                             width: 10,
                             height: 10,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: Colors.greenAccent,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.greenAccent.withOpacity(
-                                      _pulseController.value * 0.7),
-                                  blurRadius:
-                                      8 + _pulseController.value * 8,
+                              color: AppColors.textDark.withValues(alpha: 0.3),
+                            ),
+                          ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _isActive
+                                ? (isArabic
+                                      ? 'جاري البحث عن مستخدمين قريبين…'
+                                      : 'Scanning for nearby users…')
+                                : (isArabic
+                                      ? 'اضغط الزر للاتصال'
+                                      : 'Tap the button to go online'),
+                            style: TextStyle(
+                              color: _isActive
+                                  ? Colors.white
+                                  : AppColors.textDark,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${discovered.length + connected.length}',
+                          style: TextStyle(
+                            color: _isActive
+                                ? Colors.white
+                                : AppColors.textDark,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          LucideIcons.users,
+                          color: _isActive
+                              ? Colors.white70
+                              : AppColors.textDark.withValues(alpha: 0.5),
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  // ── Device lists ─────────────────────────────
+                  Expanded(
+                    child: (discovered.isEmpty && connected.isEmpty)
+                        ? _buildEmptyState(isArabic)
+                        : ListView(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            children: [
+                              // Connected devices
+                              if (connected.isNotEmpty) ...[
+                                _sectionHeader(
+                                  isArabic ? 'متصل' : 'Connected',
+                                  connected.length,
+                                ),
+                                ...connected.entries.map(
+                                  (e) => _deviceTile(
+                                    e.key,
+                                    e.value,
+                                    isConnected: true,
+                                    isArabic: isArabic,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                              // Discovered (not yet connected)
+                              if (discovered.isNotEmpty) ...[
+                                _sectionHeader(
+                                  isArabic ? 'قريب' : 'Nearby',
+                                  discovered.length,
+                                ),
+                                ...discovered.entries.map(
+                                  (e) => _deviceTile(
+                                    e.key,
+                                    e.value,
+                                    isConnected: false,
+                                    isArabic: isArabic,
+                                  ),
                                 ),
                               ],
-                            ),
-                          );
-                        },
-                      )
-                    else
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.textDark.withOpacity(0.3),
-                        ),
-                      ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _isActive
-                            ? (isArabic
-                                ? 'جاري البحث عن مستخدمين قريبين…'
-                                : 'Scanning for nearby users…')
-                            : (isArabic
-                                ? 'اضغط الزر للاتصال'
-                                : 'Tap the button to go online'),
-                        style: TextStyle(
-                          color: _isActive
-                              ? Colors.white
-                              : AppColors.textDark,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '${discovered.length + connected.length}',
-                      style: TextStyle(
-                        color: _isActive
-                            ? Colors.white
-                            : AppColors.textDark,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(
-                      LucideIcons.users,
-                      color: _isActive
-                          ? Colors.white70
-                          : AppColors.textDark.withOpacity(0.5),
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 4),
-
-              // ── Device lists ─────────────────────────────
-              Expanded(
-                child: (discovered.isEmpty && connected.isEmpty)
-                    ? _buildEmptyState(isArabic)
-                    : ListView(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        children: [
-                          // Connected devices
-                          if (connected.isNotEmpty) ...[
-                            _sectionHeader(
-                                isArabic ? 'متصل' : 'Connected',
-                                connected.length),
-                            ...connected.entries.map((e) => _deviceTile(
-                                  e.key,
-                                  e.value,
-                                  isConnected: true,
-                                  isArabic: isArabic,
-                                )),
-                            const SizedBox(height: 16),
-                          ],
-                          // Discovered (not yet connected)
-                          if (discovered.isNotEmpty) ...[
-                            _sectionHeader(
-                                isArabic ? 'قريب' : 'Nearby',
-                                discovered.length),
-                            ...discovered.entries.map((e) => _deviceTile(
-                                  e.key,
-                                  e.value,
-                                  isConnected: false,
-                                  isArabic: isArabic,
-                                )),
-                          ],
-                        ],
-                      ),
-              ),
+                            ],
+                          ),
+                  ),
                 ],
               ),
 
@@ -375,14 +405,18 @@ class _CommunityScreenState extends State<CommunityScreen>
                       transitionBuilder: (child, anim) =>
                           ScaleTransition(scale: anim, child: child),
                       child: _isActive
-                          ? const Icon(Icons.bluetooth_disabled,
+                          ? const Icon(
+                              Icons.bluetooth_disabled,
                               key: ValueKey('off'),
                               size: 28,
-                              color: Colors.white)
-                          : const Icon(Icons.bluetooth_searching,
+                              color: Colors.white,
+                            )
+                          : const Icon(
+                              Icons.bluetooth_searching,
                               key: ValueKey('on'),
                               size: 28,
-                              color: Colors.white),
+                              color: Colors.white,
+                            ),
                     ),
                   ),
                 ),
@@ -410,18 +444,17 @@ class _CommunityScreenState extends State<CommunityScreen>
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      AppColors.primaryRed.withOpacity(
-                          0.15 + _pulseController.value * 0.1),
+                      AppColors.primaryRed.withValues(
+                        alpha: 0.15 + _pulseController.value * 0.1,
+                      ),
                       Colors.transparent,
                     ],
                   ),
                 ),
                 child: Icon(
-                  _isActive
-                      ? Icons.bluetooth_searching
-                      : Icons.bluetooth,
+                  _isActive ? Icons.bluetooth_searching : Icons.bluetooth,
                   size: 52,
-                  color: AppColors.primaryRed.withOpacity(0.6),
+                  color: AppColors.primaryRed.withValues(alpha: 0.6),
                 ),
               );
             },
@@ -430,13 +463,15 @@ class _CommunityScreenState extends State<CommunityScreen>
           Text(
             _isActive
                 ? (isArabic
-                    ? 'جاري البحث عن مستخدمين قريبين…'
-                    : 'Looking for nearby users…')
+                      ? 'جاري البحث عن مستخدمين قريبين…'
+                      : 'Looking for nearby users…')
                 : (isArabic
-                    ? 'اتصل بالإنترنت للعثور على أشخاص قريبين'
-                    : 'Go online to find people nearby'),
+                      ? 'اتصل بالإنترنت للعثور على أشخاص قريبين'
+                      : 'Go online to find people nearby'),
             style: TextStyle(
-                color: AppColors.textDark.withOpacity(0.5), fontSize: 15),
+              color: AppColors.textDark.withValues(alpha: 0.5),
+              fontSize: 15,
+            ),
           ),
         ],
       ),
@@ -451,7 +486,7 @@ class _CommunityScreenState extends State<CommunityScreen>
           Text(
             title,
             style: TextStyle(
-              color: AppColors.textDark.withOpacity(0.6),
+              color: AppColors.textDark.withValues(alpha: 0.6),
               fontSize: 13,
               fontWeight: FontWeight.w600,
               letterSpacing: 1,
@@ -461,15 +496,16 @@ class _CommunityScreenState extends State<CommunityScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: AppColors.primaryRed.withOpacity(0.2),
+              color: AppColors.primaryRed.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               '$count',
               style: const TextStyle(
-                  color: AppColors.primaryRed,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold),
+                color: AppColors.primaryRed,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -477,8 +513,12 @@ class _CommunityScreenState extends State<CommunityScreen>
     );
   }
 
-  Widget _deviceTile(String id, String name,
-      {required bool isConnected, required bool isArabic}) {
+  Widget _deviceTile(
+    String id,
+    String name, {
+    required bool isConnected,
+    required bool isArabic,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
@@ -488,15 +528,14 @@ class _CommunityScreenState extends State<CommunityScreen>
           onTap: () =>
               isConnected ? _openChat(id, name) : _connectAndChat(id, name),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: AppColors.cardBackground,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isConnected
-                    ? Colors.green.withOpacity(0.3)
-                    : AppColors.primaryRed.withOpacity(0.15),
+                    ? Colors.green.withValues(alpha: 0.3)
+                    : AppColors.primaryRed.withValues(alpha: 0.15),
                 width: 1,
               ),
             ),
@@ -541,15 +580,13 @@ class _CommunityScreenState extends State<CommunityScreen>
                       Text(
                         isConnected
                             ? (isArabic
-                                ? 'متصل — اضغط للدردشة'
-                                : 'Connected — tap to chat')
-                            : (isArabic
-                                ? 'اضغط للاتصال'
-                                : 'Tap to connect'),
+                                  ? 'متصل — اضغط للدردشة'
+                                  : 'Connected — tap to chat')
+                            : (isArabic ? 'اضغط للاتصال' : 'Tap to connect'),
                         style: TextStyle(
                           color: isConnected
                               ? Colors.green.shade700
-                              : AppColors.textDark.withOpacity(0.5),
+                              : AppColors.textDark.withValues(alpha: 0.5),
                           fontSize: 12,
                         ),
                       ),
@@ -557,11 +594,10 @@ class _CommunityScreenState extends State<CommunityScreen>
                   ),
                 ),
                 Icon(
-                  isConnected
-                      ? LucideIcons.messageCircle
-                      : LucideIcons.link,
-                  color:
-                      isConnected ? Colors.green.shade700 : AppColors.primaryRed,
+                  isConnected ? LucideIcons.messageCircle : LucideIcons.link,
+                  color: isConnected
+                      ? Colors.green.shade700
+                      : AppColors.primaryRed,
                   size: 20,
                 ),
               ],

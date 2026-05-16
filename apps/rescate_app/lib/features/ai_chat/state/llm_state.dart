@@ -1,11 +1,15 @@
 // apps/rescate_app/lib/features/ai_chat/state/llm_state.dart
 
 import 'dart:async';
+import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:ai_inference/ai_inference.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Represents a single chat message.
+const String _kPrefsConversationsKey = 'ai_chat.conversations.v1';
+const String _kPrefsActiveIdKey = 'ai_chat.active_conversation_id';
+
 class ChatMessage {
   ChatMessage({
     required this.text,
@@ -13,30 +17,67 @@ class ChatMessage {
     this.isStreaming = false,
   });
 
-  /// The accumulated text content of this message.
   String text;
-
-  /// Whether this message was sent by the user (true) or the AI (false).
   final bool isUser;
-
-  /// Whether this AI message is currently receiving streamed tokens.
   bool isStreaming;
+
+  Map<String, dynamic> toJson() =>
+      {'text': text, 'isUser': isUser};
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+        text: json['text'] as String? ?? '',
+        isUser: json['isUser'] as bool? ?? false,
+      );
 }
 
-/// Feature-scoped state for the AI Chat screen.
-///
-/// Bridges [LlmService] (in `ai_inference` package) to the UI by:
-/// - Holding the chat [messages] list.
-/// - Exposing [sendMessage] which streams tokens into a growing [ChatMessage].
-/// - Propagating [LlmService.status] changes to rebuild listeners.
+class Conversation {
+  Conversation({
+    required this.id,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.title,
+    required this.messages,
+  });
+
+  final String id;
+  final int createdAt;
+  int updatedAt;
+  String title;
+  final List<ChatMessage> messages;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
+        'title': title,
+        'messages': messages.map((m) => m.toJson()).toList(),
+      };
+
+  factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
+        id: json['id'] as String,
+        createdAt: json['createdAt'] as int,
+        updatedAt: json['updatedAt'] as int,
+        title: json['title'] as String? ?? 'New chat',
+        messages: (json['messages'] as List<dynamic>? ?? [])
+            .map((e) => ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList(),
+      );
+}
+
+/// App-wide chat state. Singleton so tab switches / screen disposal can't
+/// destroy in-flight streams or message history.
 class LlmState extends ChangeNotifier {
-  LlmState() {
-    // Mirror LlmService status changes so the UI rebuilds automatically.
+  LlmState._() {
     LlmService.instance.addListener(_onServiceChanged);
+    // Fire-and-forget restore; UI listens for notifyListeners after load.
+    _restore();
   }
 
-  final List<ChatMessage> messages = [];
+  static final LlmState instance = LlmState._();
 
+  final List<Conversation> conversations = [];
+  Conversation? _active;
+  bool _restored = false;
   StreamSubscription<String>? _streamSubscription;
 
   // ── Forwarded LlmService state ─────────────────────────────────────────────
@@ -47,42 +88,108 @@ class LlmState extends ChangeNotifier {
   String? get loadedModelPath => LlmService.instance.loadedModelPath;
   String? get modelError => LlmService.instance.lastError;
 
+  // ── Conversations ──────────────────────────────────────────────────────────
+
+  bool get isRestored => _restored;
+
+  Conversation get activeConversation {
+    final existing = _active;
+    if (existing != null) return existing;
+    final created = _newConversation();
+    conversations.insert(0, created);
+    _active = created;
+    return created;
+  }
+
+  List<ChatMessage> get messages => activeConversation.messages;
+
+  Conversation _newConversation() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return Conversation(
+      id: 'c_${now}_${conversations.length}',
+      createdAt: now,
+      updatedAt: now,
+      title: 'New chat',
+      messages: [],
+    );
+  }
+
+  Future<void> startNewConversation() async {
+    if (isGenerating) {
+      _cancelStream();
+    }
+    // Drop any leading empty draft to avoid clutter.
+    if (_active != null && _active!.messages.isEmpty) {
+      conversations.remove(_active);
+    }
+    final fresh = _newConversation();
+    conversations.insert(0, fresh);
+    _active = fresh;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> selectConversation(String id) async {
+    final match = conversations.where((c) => c.id == id).cast<Conversation?>().firstOrNull;
+    if (match == null) return;
+    if (isGenerating) {
+      _cancelStream();
+    }
+    _active = match;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> deleteConversation(String id) async {
+    final wasActive = _active?.id == id;
+    conversations.removeWhere((c) => c.id == id);
+    if (wasActive) {
+      _active = conversations.isNotEmpty ? conversations.first : null;
+    }
+    await _persist();
+    notifyListeners();
+  }
+
   // ── Chat actions ───────────────────────────────────────────────────────────
 
-  /// Sends [text] to the LLM and streams the response into [messages].
-  ///
-  /// [isArabic] selects the Arabic or English system prompt.
   Future<void> sendMessage(String text, {bool isArabic = false}) async {
     if (!isModelReady || isGenerating) return;
-    if (text.trim().isEmpty) return;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
 
-    // Add user message.
-    messages.add(ChatMessage(text: text.trim(), isUser: true));
+    final convo = activeConversation;
 
-    // Add a placeholder AI message that will be filled token by token.
+    convo.messages.add(ChatMessage(text: trimmed, isUser: true));
+    if (convo.title == 'New chat') {
+      convo.title = trimmed.length > 60 ? '${trimmed.substring(0, 60)}…' : trimmed;
+    }
+    convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
+
     final aiMessage = ChatMessage(text: '', isUser: false, isStreaming: true);
-    messages.add(aiMessage);
+    convo.messages.add(aiMessage);
     notifyListeners();
+    unawaited(_persist());
 
     try {
-      final stream = LlmService.instance.generateStream(
-        text.trim(),
-        isArabic: isArabic,
-      );
+      final stream = LlmService.instance.generateStream(trimmed, isArabic: isArabic);
 
       _streamSubscription = stream.listen(
         (token) {
           aiMessage.text += token;
+          convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
           notifyListeners();
         },
         onDone: () {
           aiMessage.isStreaming = false;
+          convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
           notifyListeners();
+          unawaited(_persist());
         },
         onError: (Object e) {
           aiMessage.text = 'Error: ${e.toString()}';
           aiMessage.isStreaming = false;
           notifyListeners();
+          unawaited(_persist());
         },
         cancelOnError: true,
       );
@@ -90,14 +197,62 @@ class LlmState extends ChangeNotifier {
       aiMessage.text = 'Error: ${e.toString()}';
       aiMessage.isStreaming = false;
       notifyListeners();
+      unawaited(_persist());
     }
   }
 
-  /// Clears all chat messages.
-  void clearHistory() {
-    _cancelStream();
-    messages.clear();
-    notifyListeners();
+  // ── Persistence ────────────────────────────────────────────────────────────
+
+  Future<void> _restore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kPrefsConversationsKey);
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw) as List<dynamic>;
+        conversations
+          ..clear()
+          ..addAll(list.map((e) =>
+              Conversation.fromJson(Map<String, dynamic>.from(e as Map))));
+        // Any message marked streaming on disk wasn't actually still streaming.
+        for (final c in conversations) {
+          for (final m in c.messages) {
+            m.isStreaming = false;
+          }
+        }
+      }
+      final activeId = prefs.getString(_kPrefsActiveIdKey);
+      if (activeId != null) {
+        final match = conversations
+            .where((c) => c.id == activeId)
+            .cast<Conversation?>()
+            .firstOrNull;
+        if (match != null) _active = match;
+      }
+      _active ??= conversations.isNotEmpty ? conversations.first : null;
+    } catch (e) {
+      debugPrint('[LlmState] restore failed: $e');
+    } finally {
+      _restored = true;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Drop fully-empty draft conversations from disk so we don't pile up.
+      final keep =
+          conversations.where((c) => c.messages.isNotEmpty || c == _active).toList();
+      final encoded = jsonEncode(keep.map((c) => c.toJson()).toList());
+      await prefs.setString(_kPrefsConversationsKey, encoded);
+      if (_active != null) {
+        await prefs.setString(_kPrefsActiveIdKey, _active!.id);
+      } else {
+        await prefs.remove(_kPrefsActiveIdKey);
+      }
+    } catch (e) {
+      debugPrint('[LlmState] persist failed: $e');
+    }
   }
 
   // ── Internal ───────────────────────────────────────────────────────────────
@@ -109,12 +264,22 @@ class LlmState extends ChangeNotifier {
   void _cancelStream() {
     _streamSubscription?.cancel();
     _streamSubscription = null;
+    for (final c in conversations) {
+      for (final m in c.messages) {
+        if (m.isStreaming) m.isStreaming = false;
+      }
+    }
   }
 
   @override
   void dispose() {
+    // Singleton — should generally not be disposed during app lifetime.
     _cancelStream();
     LlmService.instance.removeListener(_onServiceChanged);
     super.dispose();
   }
+}
+
+extension _FirstOrNull<E> on Iterable<E> {
+  E? get firstOrNull => isEmpty ? null : first;
 }

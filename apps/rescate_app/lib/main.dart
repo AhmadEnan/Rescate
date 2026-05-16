@@ -1,11 +1,11 @@
 // Main App Entry Point
 import 'dart:async';
 
+import 'package:biometric_estimators/biometric_estimators.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:offline_data/offline_data.dart';
-import 'package:p2p_mesh/p2p_mesh.dart';
 import 'package:sensor_availability/sensor_availability.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite/sqflite.dart';
@@ -27,7 +27,7 @@ Future<void> main() async {
 Future<void> _initOfflineMapCache() async {
   try {
     await FMTCObjectBoxBackend().initialise();
-    await FMTCStore('rescate_offline_map').manage.create();
+    await const FMTCStore('rescate_offline_map').manage.create();
   } on Object catch (e) {
     debugPrint('Offline map cache initialization skipped: $e');
   }
@@ -91,19 +91,15 @@ class RescateApp extends StatefulWidget {
 
 class _RescateAppState extends State<RescateApp> {
   final AppState _appState = AppState();
-  final MeshProvider _meshProvider = MeshProvider();
 
   @override
   void initState() {
     super.initState();
-    // Initialize mesh networking in the background (non-blocking).
-    unawaited(_meshProvider.init());
   }
 
   @override
   void dispose() {
     _appState.dispose();
-    _meshProvider.dispose();
     super.dispose();
   }
 

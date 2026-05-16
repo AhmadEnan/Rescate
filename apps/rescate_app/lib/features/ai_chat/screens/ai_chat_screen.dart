@@ -10,6 +10,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
 import '../../home/widgets/top_bar.dart';
 import '../state/llm_state.dart';
+import 'chat_history_screen.dart';
 import 'model_setup_screen.dart';
 
 class AiChatScreen extends StatefulWidget {
@@ -23,7 +24,7 @@ class _AiChatScreenState extends State<AiChatScreen>
     with AutomaticKeepAliveClientMixin {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  late final LlmState _llmState;
+  final LlmState _llmState = LlmState.instance;
 
   @override
   bool get wantKeepAlive => true;
@@ -31,14 +32,13 @@ class _AiChatScreenState extends State<AiChatScreen>
   @override
   void initState() {
     super.initState();
-    _llmState = LlmState();
     _llmState.addListener(_onStateChanged);
   }
 
   @override
   void dispose() {
     _llmState.removeListener(_onStateChanged);
-    _llmState.dispose();
+    // Do NOT dispose the singleton.
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -76,6 +76,18 @@ class _AiChatScreenState extends State<AiChatScreen>
     );
   }
 
+  void _openHistory() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ChatHistoryScreen(),
+      ),
+    );
+  }
+
+  Future<void> _newChat() async {
+    await _llmState.startNewConversation();
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
@@ -95,6 +107,13 @@ class _AiChatScreenState extends State<AiChatScreen>
               _ModelStatusBanner(
                 onSetupTap: _openModelSetup,
                 llmState: _llmState,
+              ),
+              _ChatToolbar(
+                onNewChat: _newChat,
+                onHistory: _openHistory,
+                title: _llmState.conversations.isEmpty
+                    ? 'New chat'
+                    : _llmState.activeConversation.title,
               ),
               Expanded(child: _buildMessageList(isArabic)),
               _buildInputBar(isArabic),
@@ -229,6 +248,57 @@ class _AiChatScreenState extends State<AiChatScreen>
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Chat toolbar (new / history) ───────────────────────────────────────────────
+
+class _ChatToolbar extends StatelessWidget {
+  const _ChatToolbar({
+    required this.onNewChat,
+    required this.onHistory,
+    required this.title,
+  });
+
+  final VoidCallback onNewChat;
+  final VoidCallback onHistory;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark.withOpacity(0.7),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            tooltip: 'New chat',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(LucideIcons.plus,
+                size: 18, color: AppColors.primaryRed),
+            onPressed: onNewChat,
+          ),
+          IconButton(
+            tooltip: 'History',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(LucideIcons.history,
+                size: 18, color: AppColors.primaryRed),
+            onPressed: onHistory,
           ),
         ],
       ),

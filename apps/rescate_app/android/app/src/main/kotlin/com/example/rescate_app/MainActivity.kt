@@ -2,6 +2,7 @@ package com.example.rescate_app
 
 import com.graphhopper.GHRequest
 import com.graphhopper.GraphHopper
+import com.graphhopper.reader.osm.GraphHopperOSM
 import com.graphhopper.config.CHProfile
 import com.graphhopper.config.Profile
 import com.graphhopper.routing.util.EncodingManager
@@ -9,10 +10,15 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sqrt
 import java.util.Locale
 import com.graphhopper.util.shapes.GHPoint
+import android.util.Log
 
 class MainActivity : FlutterActivity() {
     private val channelName = "rescate/offline_routing"
@@ -24,13 +30,51 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Android lacks a default StAX provider; pin Aalto so XMLInputFactory.newInstance() resolves.
+        System.setProperty(
+            "javax.xml.stream.XMLInputFactory",
+            "com.fasterxml.aalto.stax.InputFactoryImpl",
+        )
+        System.setProperty(
+            "javax.xml.stream.XMLOutputFactory",
+            "com.fasterxml.aalto.stax.OutputFactoryImpl",
+        )
+        System.setProperty(
+            "javax.xml.stream.XMLEventFactory",
+            "com.fasterxml.aalto.stax.EventFactoryImpl",
+        )
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "findRoute" -> findRoute(call.arguments, result)
+                    "prepareRoadGraph" -> prepareRoadGraph(call.arguments, result)
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun prepareRoadGraph(arguments: Any?, result: MethodChannel.Result) {
+        Thread {
+            val success = try {
+                val args = arguments as? Map<*, *> ?: return@Thread finish(result, false)
+                val south = (args["south"] as Number).toDouble()
+                val west = (args["west"] as Number).toDouble()
+                val north = (args["north"] as Number).toDouble()
+                val east = (args["east"] as Number).toDouble()
+                downloadAndImportRoadGraph(south, west, north, east)
+            } catch (t: Throwable) {
+                Log.e("OfflineRouting", "prepareRoadGraph failed", t)
+                false
+            }
+            finish(result, success)
+        }.start()
+    }
+
+    private fun finish(result: MethodChannel.Result, value: Boolean) {
+        runOnUiThread {
+            result.success(value)
+        }
     }
 
     private fun findRoute(arguments: Any?, result: MethodChannel.Result) {
@@ -96,24 +140,37 @@ class MainActivity : FlutterActivity() {
         val directRoute = routeThrough(graphHopper, listOf(start, destination)) ?: return emptyList()
         if (firstDangerOnRoute(directRoute, dangerZones) == null) return directRoute
 
-        var bestRoute = directRoute
-        var bestScore = dangerScore(directRoute, dangerZones)
+        val unsafeZones = dangerZones.filter { zone -> routeTouchesDanger(directRoute, zone) }
+        val candidateWaypoints = mutableListOf<List<RoutePoint>>()
 
-        for (zone in dangerZones) {
-            if (!routeTouchesDanger(bestRoute, zone)) continue
-
-            for (detour in detourOptions(start, destination, zone)) {
-                val candidate = routeThrough(graphHopper, listOf(start, detour, destination)) ?: continue
-                val candidateScore = dangerScore(candidate, dangerZones)
-                if (candidateScore < bestScore) {
-                    bestRoute = candidate
-                    bestScore = candidateScore
-                }
-                if (candidateScore == 0) return candidate
+        for (zone in unsafeZones) {
+            detourOptions(start, destination, zone).forEach { detour ->
+                candidateWaypoints.add(listOf(start, detour, destination))
             }
         }
 
-        return bestRoute
+        if (unsafeZones.size > 1 && unsafeZones.size <= 5) {
+            val leftDetours = mutableListOf(start)
+            val rightDetours = mutableListOf(start)
+            unsafeZones.forEach { zone ->
+                val options = detourOptions(start, destination, zone)
+                if (options.size >= 2) {
+                    leftDetours.add(options[0])
+                    rightDetours.add(options[1])
+                }
+            }
+            leftDetours.add(destination)
+            rightDetours.add(destination)
+            candidateWaypoints.add(leftDetours)
+            candidateWaypoints.add(rightDetours)
+        }
+
+        for (waypoints in candidateWaypoints) {
+            val candidate = routeThrough(graphHopper, waypoints) ?: continue
+            if (!routeTouchesAnyDanger(candidate, dangerZones)) return candidate
+        }
+
+        return emptyList()
     }
 
     private fun routeThrough(graphHopper: GraphHopper, points: List<RoutePoint>): List<RoutePoint>? {
@@ -141,7 +198,18 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun routeTouchesDanger(route: List<RoutePoint>, zone: DangerZone): Boolean {
-        return route.any { point -> distanceMeters(point, RoutePoint(zone.lat, zone.lng)) < zone.radius + 60.0 }
+        if (route.size < 2) return false
+        val center = RoutePoint(zone.lat, zone.lng)
+        for (index in 0 until route.size - 1) {
+            if (segmentDistanceMeters(route[index], route[index + 1], center) <= zone.radius) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun routeTouchesAnyDanger(route: List<RoutePoint>, dangerZones: List<DangerZone>): Boolean {
+        return dangerZones.any { zone -> routeTouchesDanger(route, zone) }
     }
 
     private fun dangerScore(route: List<RoutePoint>, dangerZones: List<DangerZone>): Int {
@@ -157,22 +225,40 @@ class MainActivity : FlutterActivity() {
         val length = sqrt(dx * dx + dy * dy)
         if (length == 0.0) return emptyList()
 
-        val offsetMeters = zone.radius + 180.0
+        val offsetDistances = listOf(zone.radius + 250.0, zone.radius + 500.0, zone.radius + 850.0)
         val metersPerLatDegree = 111_320.0
         val metersPerLngDegree = 111_320.0 * cos(Math.toRadians(zone.lat))
         val perpLat = dx / length
         val perpLng = -dy / length
 
-        return listOf(
-            RoutePoint(
-                center.lat + (perpLat * offsetMeters / metersPerLatDegree),
-                center.lng + (perpLng * offsetMeters / metersPerLngDegree),
-            ),
-            RoutePoint(
-                center.lat - (perpLat * offsetMeters / metersPerLatDegree),
-                center.lng - (perpLng * offsetMeters / metersPerLngDegree),
-            ),
-        )
+        val options = mutableListOf<RoutePoint>()
+        offsetDistances.forEach { offsetMeters ->
+            options.add(
+                RoutePoint(
+                    center.lat + (perpLat * offsetMeters / metersPerLatDegree),
+                    center.lng + (perpLng * offsetMeters / metersPerLngDegree),
+                )
+            )
+            options.add(
+                RoutePoint(
+                    center.lat - (perpLat * offsetMeters / metersPerLatDegree),
+                    center.lng - (perpLng * offsetMeters / metersPerLngDegree),
+                )
+            )
+        }
+
+        for (bearing in 0 until 360 step 45) {
+            val radians = Math.toRadians(bearing.toDouble())
+            val offsetMeters = zone.radius + 650.0
+            options.add(
+                RoutePoint(
+                    center.lat + (kotlin.math.cos(radians) * offsetMeters / metersPerLatDegree),
+                    center.lng + (kotlin.math.sin(radians) * offsetMeters / metersPerLngDegree),
+                )
+            )
+        }
+
+        return options
     }
 
     private fun distanceMeters(a: RoutePoint, b: RoutePoint): Double {
@@ -187,6 +273,92 @@ class MainActivity : FlutterActivity() {
         return 2 * earthRadiusMeters * kotlin.math.atan2(sqrt(haversine), sqrt(1 - haversine))
     }
 
+    private fun segmentDistanceMeters(a: RoutePoint, b: RoutePoint, point: RoutePoint): Double {
+        val metersPerLatDegree = 111_320.0
+        val metersPerLngDegree = metersPerLatDegree * cos(Math.toRadians(point.lat))
+        val ax = a.lng * metersPerLngDegree
+        val ay = a.lat * metersPerLatDegree
+        val bx = b.lng * metersPerLngDegree
+        val by = b.lat * metersPerLatDegree
+        val px = point.lng * metersPerLngDegree
+        val py = point.lat * metersPerLatDegree
+        val dx = bx - ax
+        val dy = by - ay
+        val lengthSquared = dx * dx + dy * dy
+        if (lengthSquared == 0.0) return distanceMeters(a, point)
+        val t = max(0.0, kotlin.math.min(1.0, (((px - ax) * dx) + ((py - ay) * dy)) / lengthSquared))
+        val nearestX = ax + dx * t
+        val nearestY = ay + dy * t
+        return sqrt(((px - nearestX) * (px - nearestX)) + ((py - nearestY) * (py - nearestY)))
+    }
+
+    private fun downloadAndImportRoadGraph(
+        south: Double,
+        west: Double,
+        north: Double,
+        east: Double,
+    ): Boolean {
+        val routingDir = File(filesDir, "offline_routing")
+        if (!routingDir.exists()) routingDir.mkdirs()
+        val graphDir = File(routingDir, "graph-cache")
+        val osmFile = File(routingDir, "road-data.osm.xml")
+        Log.i("OfflineRouting", "Downloading OSM bbox south=$south west=$west north=$north east=$east")
+        val query =
+            "[out:xml][timeout:120];(way[\"highway\"]($south,$west,$north,$east);>;);out body;"
+
+        val connection = URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 30_000
+        connection.readTimeout = 180_000
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+        connection.outputStream.use { stream ->
+            stream.write("data=${URLEncoder.encode(query, "UTF-8")}".toByteArray())
+        }
+        if (connection.responseCode !in 200..299) {
+            Log.e("OfflineRouting", "Overpass HTTP ${connection.responseCode}")
+            return false
+        }
+        connection.inputStream.use { input ->
+            osmFile.outputStream().use { output -> input.copyTo(output) }
+        }
+        Log.i("OfflineRouting", "Downloaded OSM file: ${osmFile.length()} bytes")
+        if (!osmFile.exists() || osmFile.length() < 1024L) {
+            Log.e("OfflineRouting", "OSM file too small or missing: ${osmFile.length()}")
+            return false
+        }
+
+        hopper?.close()
+        hopper = null
+        if (graphDir.exists()) graphDir.deleteRecursively()
+        graphDir.mkdirs()
+
+        return try {
+            GraphHopperOSM().apply {
+                setDataReaderFile(osmFile.absolutePath)
+                graphHopperLocation = graphDir.absolutePath
+                encodingManager = EncodingManager.create("car")
+                setProfiles(
+                    Profile("car")
+                        .setVehicle("car")
+                        .setWeighting("fastest")
+                        .setTurnCosts(false)
+                )
+                chPreparationHandler.setCHProfiles(CHProfile("car"))
+                importOrLoad()
+            }.also {
+                hopper = it
+            }
+            Log.i("OfflineRouting", "GraphHopper graph built successfully at ${graphDir.absolutePath}")
+            true
+        } catch (t: Throwable) {
+            Log.e("OfflineRouting", "GraphHopper import failed", t)
+            if (graphDir.exists()) graphDir.deleteRecursively()
+            hopper = null
+            false
+        }
+    }
+
     private fun loadGraphHopper(): GraphHopper? {
         hopper?.let { return it }
 
@@ -194,7 +366,7 @@ class MainActivity : FlutterActivity() {
         if (!graphDir.exists()) return null
 
         return try {
-            GraphHopper().apply {
+            GraphHopperOSM().apply {
                 graphHopperLocation = graphDir.absolutePath
                 encodingManager = EncodingManager.create("car")
                 setProfiles(

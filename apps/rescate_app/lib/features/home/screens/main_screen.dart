@@ -25,11 +25,11 @@ class MainScreenState extends State<MainScreen> {
     });
   }
 
-  final List<Widget> _screens = [
-    const EducationalScreen(),
-    const MapScreen(),
-    const AiChatScreen(),
-    const CommunityScreen(),
+  final List<Widget> _screens = const [
+    EducationalScreen(),
+    MapScreen(),
+    AiChatScreen(),
+    CommunityScreen(),
   ];
 
   @override
@@ -37,28 +37,12 @@ class MainScreenState extends State<MainScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
-      body: _screens[_currentIndex],
-
-      // ── Floating AI Chat shortcut (shown on every tab except the chat tab) ──
-      floatingActionButton: _currentIndex != 2
-          ? FloatingActionButton.extended(
-              heroTag: 'ai_chat_fab',
-              onPressed: () => setState(() => _currentIndex = 2),
-              backgroundColor: AppColors.primaryRed,
-              foregroundColor: Colors.white,
-              elevation: 6,
-              icon: const Icon(LucideIcons.bot, size: 20),
-              label: Text(
-                'AI Chat',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-
+      // IndexedStack keeps every tab mounted so in-flight LLM streams,
+      // chat messages, and text input survive tab switches.
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
+      ),
       bottomNavigationBar: SizedBox(
         height: 100,
         child: Stack(
@@ -68,9 +52,7 @@ class MainScreenState extends State<MainScreen> {
             // Background strip
             Container(
               height: 70,
-              decoration: const BoxDecoration(
-                color: AppColors.background,
-              ),
+              decoration: const BoxDecoration(color: AppColors.background),
             ),
             // Nav pills row
             Positioned(

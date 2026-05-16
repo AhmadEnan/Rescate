@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
-import '../models/bt_message.dart';
-import '../services/nearby_service.dart';
+import 'package:bluetooth_mesh/bluetooth_mesh.dart';
 
 class BtChatScreen extends StatefulWidget {
   final String endpointId;
@@ -107,9 +106,10 @@ class _BtChatScreenState extends State<BtChatScreen> {
                         ? widget.endpointName[0].toUpperCase()
                         : '?',
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14),
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ),
@@ -117,34 +117,40 @@ class _BtChatScreenState extends State<BtChatScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.endpointName,
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textDark)),
-                  Row(children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _isConnected
-                            ? Colors.green.shade600
-                            : Colors.red.shade600,
-                      ),
+                  Text(
+                    widget.endpointName,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textDark,
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _isConnected
-                          ? (isArabic ? 'متصل' : 'Connected')
-                          : (isArabic ? 'غير متصل' : 'Disconnected'),
-                      style: TextStyle(
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _isConnected
+                              ? Colors.green.shade600
+                              : Colors.red.shade600,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _isConnected
+                            ? (isArabic ? 'متصل' : 'Connected')
+                            : (isArabic ? 'غير متصل' : 'Disconnected'),
+                        style: TextStyle(
                           fontSize: 11,
                           color: _isConnected
                               ? Colors.green.shade600
-                              : Colors.red.shade600),
-                    ),
-                  ]),
+                              : Colors.red.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ],
@@ -165,12 +171,15 @@ class _BtChatScreenState extends State<BtChatScreen> {
             // Disconnected banner
             if (!_isConnected)
               Container(
-                color: Colors.orange.withOpacity(0.2),
+                color: Colors.orange.withValues(alpha: 0.2),
                 padding: const EdgeInsets.all(8),
                 child: Row(
                   children: [
-                    const Icon(LucideIcons.alertTriangle,
-                        color: Colors.orange, size: 20),
+                    const Icon(
+                      LucideIcons.alertTriangle,
+                      color: Colors.orange,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -189,23 +198,25 @@ class _BtChatScreenState extends State<BtChatScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(LucideIcons.messageCircle,
-                              size: 64,
-                              color: AppColors.primaryRed.withOpacity(0.3)),
+                          Icon(
+                            LucideIcons.messageCircle,
+                            size: 64,
+                            color: AppColors.primaryRed.withValues(alpha: 0.3),
+                          ),
                           const SizedBox(height: 12),
                           Text(
-                            isArabic
-                                ? 'لا توجد رسائل بعد'
-                                : 'No messages yet',
+                            isArabic ? 'لا توجد رسائل بعد' : 'No messages yet',
                             style: TextStyle(
-                                color: AppColors.textDark.withOpacity(0.5),
-                                fontSize: 15),
+                              color: AppColors.textDark.withValues(alpha: 0.5),
+                              fontSize: 15,
+                            ),
                           ),
                           Text(
                             isArabic ? 'قل مرحباً! 👋' : 'Say hello! 👋',
                             style: TextStyle(
-                                color: AppColors.textDark.withOpacity(0.4),
-                                fontSize: 13),
+                              color: AppColors.textDark.withValues(alpha: 0.4),
+                              fontSize: 13,
+                            ),
                           ),
                         ],
                       ),
@@ -232,8 +243,9 @@ class _BtChatScreenState extends State<BtChatScreen> {
       alignment: isSent ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
-        constraints:
-            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isSent ? AppColors.primaryRed : AppColors.cardBackground,
@@ -246,29 +258,36 @@ class _BtChatScreenState extends State<BtChatScreen> {
           boxShadow: isSent
               ? [
                   BoxShadow(
-                    color: AppColors.primaryRed.withOpacity(0.25),
+                    color: AppColors.primaryRed.withValues(alpha: 0.25),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
-                  )
+                  ),
                 ]
               : [],
         ),
         child: Column(
-          crossAxisAlignment:
-              isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isSent
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
-            Text(msg.text,
-                style: TextStyle(
-                    color: isSent ? Colors.white : AppColors.textDark,
-                    fontSize: 15,
-                    height: 1.35)),
+            Text(
+              msg.text,
+              style: TextStyle(
+                color: isSent ? Colors.white : AppColors.textDark,
+                fontSize: 15,
+                height: 1.35,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(time,
-                style: TextStyle(
-                    color: isSent
-                        ? Colors.white.withOpacity(0.5)
-                        : AppColors.textDark.withOpacity(0.4),
-                    fontSize: 10)),
+            Text(
+              time,
+              style: TextStyle(
+                color: isSent
+                    ? Colors.white.withValues(alpha: 0.5)
+                    : AppColors.textDark.withValues(alpha: 0.4),
+                fontSize: 10,
+              ),
+            ),
           ],
         ),
       ),
@@ -280,10 +299,10 @@ class _BtChatScreenState extends State<BtChatScreen> {
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
         decoration: BoxDecoration(
-          color: AppColors.cardBackground.withOpacity(0.8),
+          color: AppColors.cardBackground.withValues(alpha: 0.8),
           border: Border(
-              top: BorderSide(
-                  color: AppColors.primaryRed.withOpacity(0.1))),
+            top: BorderSide(color: AppColors.primaryRed.withValues(alpha: 0.1)),
+          ),
         ),
         child: Row(
           children: [
@@ -292,9 +311,7 @@ class _BtChatScreenState extends State<BtChatScreen> {
                 controller: _msgController,
                 style: const TextStyle(color: AppColors.textDark),
                 decoration: InputDecoration(
-                  hintText: isArabic
-                      ? 'اكتب رسالة…'
-                      : 'Type a message…',
+                  hintText: isArabic ? 'اكتب رسالة…' : 'Type a message…',
                   filled: true,
                   fillColor: AppColors.background,
                   border: OutlineInputBorder(
@@ -302,7 +319,9 @@ class _BtChatScreenState extends State<BtChatScreen> {
                     borderSide: BorderSide.none,
                   ),
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ),
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _sendMessage(),
@@ -321,8 +340,11 @@ class _BtChatScreenState extends State<BtChatScreen> {
                       : AppColors.cardBackgroundLight,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(LucideIcons.send,
-                    color: Colors.white, size: 22),
+                child: const Icon(
+                  LucideIcons.send,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
             ),
           ],

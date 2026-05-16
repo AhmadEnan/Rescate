@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -9,6 +10,8 @@ import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:sensors_plus/sensors_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/providers/app_state.dart';
 import '../services/offline_route_service.dart';
@@ -21,6 +24,47 @@ class MapScreen extends StatefulWidget {
 }
 
 enum _ReportType { danger, aid }
+
+class _DownloadedMapArea {
+  final LatLng center;
+  final double radiusKm;
+  final int downloadedAt;
+
+  const _DownloadedMapArea({
+    required this.center,
+    required this.radiusKm,
+    required this.downloadedAt,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'lat': center.latitude,
+      'lng': center.longitude,
+      'radiusKm': radiusKm,
+      'downloadedAt': downloadedAt,
+    };
+  }
+
+  factory _DownloadedMapArea.fromJson(Map<String, dynamic> json) {
+    return _DownloadedMapArea(
+      center: LatLng(
+        (json['lat'] as num).toDouble(),
+        (json['lng'] as num).toDouble(),
+      ),
+      radiusKm: (json['radiusKm'] as num).toDouble(),
+      downloadedAt: json['downloadedAt'] as int,
+    );
+  }
+}
+
+class _DownloadOptionData {
+  final double radiusKm;
+  final int tileCount;
+
+  const _DownloadOptionData({required this.radiusKm, required this.tileCount});
+
+  double get estimatedSizeMb => (tileCount * 18) / 1024;
+}
 
 class _MapReport {
   final String id;
@@ -84,6 +128,8 @@ class _DangerZone {
 
 class _MapScreenState extends State<MapScreen> {
   static const String _reportsStorageKey = 'offline_map_reports';
+  static const String _downloadedAreasStorageKey =
+      'offline_map_downloaded_areas';
   static const String _mapStoreName = 'rescate_offline_map';
   static const LatLng _redCrescentPoint = LatLng(33.513, 36.285);
   static const List<_DangerZone> _baseDangerZones = [];
@@ -91,6 +137,11 @@ class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   final Distance _distance = const Distance();
   final OfflineRouteService _routeService = OfflineRouteService();
+  StreamSubscription<Position>? _positionSubscription;
+  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
+  StreamSubscription<MagnetometerEvent>? _magnetometerSubscription;
+  List<double>? _accelerometerValues;
+  List<double>? _magnetometerValues;
   LatLng _myLocation = const LatLng(33.515, 36.295);
   bool _showRoute = false;
   _ReportType? _pendingReportType;
@@ -101,12 +152,29 @@ class _MapScreenState extends State<MapScreen> {
   List<LatLng> _safeRoute = [];
   bool _isLoadingRoute = false;
   bool _isDownloadingMap = false;
+  bool _hasPromptedForCurrentArea = false;
+  bool _followHeading = false;
+  bool _showCoordinateDetails = false;
+  double? _headingDegrees;
+  double _mapDownloadProgress = 0;
+  String _mapDownloadStatus = '';
+  List<_DownloadedMapArea> _downloadedAreas = [];
 
   @override
   void initState() {
     super.initState();
     _loadReports();
+    _loadDownloadedAreas();
+    _startOrientationUpdates();
     _determinePosition();
+  }
+
+  @override
+  void dispose() {
+    _positionSubscription?.cancel();
+    _accelerometerSubscription?.cancel();
+    _magnetometerSubscription?.cancel();
+    super.dispose();
   }
 
   List<_DangerZone> get _dangerZones {
@@ -149,8 +217,39 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _saveReports() async {
     final prefs = await SharedPreferences.getInstance();
-    final encoded = jsonEncode(_reports.map((report) => report.toJson()).toList());
+    final encoded = jsonEncode(
+      _reports.map((report) => report.toJson()).toList(),
+    );
     await prefs.setString(_reportsStorageKey, encoded);
+  }
+
+  Future<void> _loadDownloadedAreas() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawAreas = prefs.getString(_downloadedAreasStorageKey);
+      if (rawAreas == null) return;
+
+      final decoded = jsonDecode(rawAreas) as List<dynamic>;
+      final areas = decoded
+          .map(
+            (item) => _DownloadedMapArea.fromJson(item as Map<String, dynamic>),
+          )
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _downloadedAreas = areas;
+      });
+    } catch (e) {
+      debugPrint('Error loading offline map areas: $e');
+    }
+  }
+
+  Future<void> _saveDownloadedAreas() async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(
+      _downloadedAreas.map((area) => area.toJson()).toList(),
+    );
+    await prefs.setString(_downloadedAreasStorageKey, encoded);
   }
 
   Future<void> _determinePosition() async {
@@ -165,21 +264,202 @@ class _MapScreenState extends State<MapScreen> {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) return;
     }
-    
+
     if (permission == LocationPermission.deniedForever) return;
 
     try {
       Position position = await Geolocator.getCurrentPosition();
-      setState(() {
-        _myLocation = LatLng(position.latitude, position.longitude);
-      });
-      if (_showRoute) {
-        await _setSafeRouteTo(_routeDestination ?? _nearestAidPoint());
-      }
-      _mapController.move(_myLocation, 14.5);
+      _applyPosition(position);
+      _startPositionUpdates();
+      _centerMap();
+      await _maybePromptForAreaDownload();
     } catch (e) {
-      print('Error getting location: $e');
+      debugPrint('Error getting location: $e');
     }
+  }
+
+  void _applyPosition(Position position) {
+    final nextLocation = LatLng(position.latitude, position.longitude);
+    final nextHeading = position.heading.isFinite && position.heading >= 0
+        ? position.heading
+        : _headingDegrees;
+
+    if (!mounted) return;
+    setState(() {
+      _myLocation = nextLocation;
+      _headingDegrees = nextHeading;
+    });
+    if (_followHeading && nextHeading != null) {
+      _mapController.moveAndRotate(
+        nextLocation,
+        _mapController.camera.zoom,
+        nextHeading,
+      );
+    }
+  }
+
+  void _startPositionUpdates() {
+    _positionSubscription ??=
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          ),
+        ).listen((position) {
+          _applyPosition(position);
+          if (_showRoute && _routeDestination != null) {
+            _setSafeRouteTo(_routeDestination!);
+          }
+          _maybePromptForAreaDownload();
+        });
+  }
+
+  void _startOrientationUpdates() {
+    const interval = Duration(milliseconds: 250);
+    _accelerometerSubscription ??=
+        accelerometerEventStream(samplingPeriod: interval).listen((event) {
+          _accelerometerValues = [event.x, event.y, event.z];
+          _updateCompassHeading();
+        });
+    _magnetometerSubscription ??=
+        magnetometerEventStream(samplingPeriod: interval).listen((event) {
+          _magnetometerValues = [event.x, event.y, event.z];
+          _updateCompassHeading();
+        });
+  }
+
+  void _updateCompassHeading() {
+    final gravity = _accelerometerValues;
+    final magnetic = _magnetometerValues;
+    if (gravity == null || magnetic == null) return;
+
+    final ax = gravity[0];
+    final ay = gravity[1];
+    final az = gravity[2];
+    final ex = magnetic[0];
+    final ey = magnetic[1];
+    final ez = magnetic[2];
+
+    var hx = ey * az - ez * ay;
+    var hy = ez * ax - ex * az;
+    var hz = ex * ay - ey * ax;
+    final hNorm = math.sqrt(hx * hx + hy * hy + hz * hz);
+    final gNorm = math.sqrt(ax * ax + ay * ay + az * az);
+    if (hNorm < 0.1 || gNorm < 0.1) return;
+
+    hx /= hNorm;
+    hy /= hNorm;
+    hz /= hNorm;
+    final gx = ax / gNorm;
+    final gz = az / gNorm;
+
+    final my = gz * hx - gx * hz;
+    final azimuthRadians = math.atan2(hy, my);
+    final heading = (azimuthRadians * 180 / math.pi + 360) % 360;
+    final previous = _headingDegrees;
+    if (previous != null &&
+        ((heading - previous + 540) % 360 - 180).abs() < 2) {
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _headingDegrees = heading;
+    });
+    if (_followHeading) {
+      _mapController.moveAndRotate(
+        _myLocation,
+        _mapController.camera.zoom,
+        heading,
+      );
+    }
+  }
+
+  Future<void> _maybePromptForAreaDownload() async {
+    if (_hasPromptedForCurrentArea || _hasOfflineDataFor(_myLocation)) return;
+    final hasConnection = await _hasInternetConnection();
+    if (!mounted || !hasConnection || _hasOfflineDataFor(_myLocation)) return;
+
+    _hasPromptedForCurrentArea = true;
+    _showOfflineMapDownloadSheet(AppStateProvider.of(context).isArabic);
+  }
+
+  Future<bool> _hasInternetConnection() async {
+    try {
+      final response = await http
+          .get(Uri.parse('https://tile.openstreetmap.org/0/0/0.png'))
+          .timeout(const Duration(seconds: 4));
+      return response.statusCode >= 200 && response.statusCode < 500;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _hasOfflineDataFor(LatLng point) {
+    return _downloadedAreas.any((area) {
+      final distanceKm = _distance.as(LengthUnit.Kilometer, area.center, point);
+      return distanceKm <= area.radiusKm;
+    });
+  }
+
+  void _toggleHeadingFollow() {
+    final nextValue = !_followHeading;
+    setState(() {
+      _followHeading = nextValue;
+    });
+    if (nextValue && _headingDegrees != null) {
+      _mapController.moveAndRotate(
+        _myLocation,
+        _mapController.camera.zoom,
+        _headingDegrees!,
+      );
+    } else if (!nextValue) {
+      _mapController.rotate(0);
+    }
+  }
+
+  String _formatHeading() {
+    final heading = _headingDegrees;
+    if (heading == null) return '---';
+    return '${heading.round()}°';
+  }
+
+  String _approximateAreaLabel() {
+    final damascusDistanceKm = _distance.as(
+      LengthUnit.Kilometer,
+      _myLocation,
+      _redCrescentPoint,
+    );
+    if (damascusDistanceKm < 25) return 'Approx. Damascus area';
+    return 'Approx. current map area';
+  }
+
+  Future<List<_DownloadOptionData>> _loadDownloadOptions() async {
+    final options = <_DownloadOptionData>[];
+    for (final radiusKm in const [1.0, 3.0, 5.0]) {
+      final region = _downloadRegionFor(radiusKm);
+      final tileCount = await FMTCStore(_mapStoreName).download.check(region);
+      options.add(
+        _DownloadOptionData(radiusKm: radiusKm, tileCount: tileCount),
+      );
+    }
+    return options;
+  }
+
+  DownloadableRegion _downloadRegionFor(double radiusKm) {
+    return CircleRegion(_myLocation, radiusKm).toDownloadable(
+      minZoom: 12,
+      maxZoom: 16,
+      options: TileLayer(
+        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        userAgentPackageName: 'com.example.rescate_app',
+      ),
+    );
+  }
+
+  String _formatDownloadSize(double sizeMb) {
+    if (sizeMb < 1) return '${(sizeMb * 1024).round()} KB';
+    return '${sizeMb.toStringAsFixed(sizeMb >= 10 ? 0 : 1)} MB';
   }
 
   void _zoomIn() {
@@ -193,7 +473,11 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _centerMap() {
-    _mapController.move(_myLocation, 14.5);
+    if (_followHeading && _headingDegrees != null) {
+      _mapController.moveAndRotate(_myLocation, 14.5, _headingDegrees!);
+    } else {
+      _mapController.move(_myLocation, 14.5);
+    }
   }
 
   void _toggleRoute() {
@@ -238,7 +522,8 @@ class _MapScreenState extends State<MapScreen> {
         math.sin(lat) * math.cos(angularDistance) +
             math.cos(lat) * math.sin(angularDistance) * math.cos(bearing),
       );
-      final pointLng = lng +
+      final pointLng =
+          lng +
           math.atan2(
             math.sin(bearing) * math.sin(angularDistance) * math.cos(lat),
             math.cos(angularDistance) - math.sin(lat) * math.sin(pointLat),
@@ -260,7 +545,10 @@ class _MapScreenState extends State<MapScreen> {
       start: _myLocation,
       destination: destination,
       dangerZones: _dangerZones
-          .map((zone) => OfflineDangerZone(center: zone.point, radius: zone.radius))
+          .map(
+            (zone) =>
+                OfflineDangerZone(center: zone.point, radius: zone.radius),
+          )
           .toList(),
     );
     if (!mounted) return;
@@ -275,7 +563,7 @@ class _MapScreenState extends State<MapScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Offline routing needs road graph data. Map tile downloads do not include routes yet.',
+            'No safe offline road route is available for this destination.',
           ),
         ),
       );
@@ -293,48 +581,63 @@ class _MapScreenState extends State<MapScreen> {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isArabic ? 'تحميل خريطة بدون إنترنت' : 'Download offline map',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isArabic
-                      ? 'سيتم تحميل المنطقة حول موقعك الحالي فقط. لا يشمل هذا بيانات الطرق.'
-                      : 'Downloads visual map tiles around your current location. This does not include routing data.',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppColors.textDark.withOpacity(0.7),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _ReportOption(
-                  icon: Icons.download_rounded,
-                  color: Colors.blue,
-                  title: isArabic ? 'منطقة صغيرة 1 كم' : 'Small area - 1 km',
-                  onTap: () => _downloadOfflineMapArea(radiusKm: 1),
-                ),
-                _ReportOption(
-                  icon: Icons.download_rounded,
-                  color: Colors.blue,
-                  title: isArabic ? 'منطقة متوسطة 3 كم' : 'Medium area - 3 km',
-                  onTap: () => _downloadOfflineMapArea(radiusKm: 3),
-                ),
-                _ReportOption(
-                  icon: Icons.download_rounded,
-                  color: Colors.blue,
-                  title: isArabic ? 'منطقة كبيرة 5 كم' : 'Large area - 5 km',
-                  onTap: () => _downloadOfflineMapArea(radiusKm: 5),
-                ),
-              ],
+            child: FutureBuilder<List<_DownloadOptionData>>(
+              future: _loadDownloadOptions(),
+              builder: (context, snapshot) {
+                final options = snapshot.data;
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isArabic
+                          ? 'تحميل خريطة بدون إنترنت'
+                          : 'Download offline map',
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isArabic
+                          ? 'سيتم تحميل المنطقة حول موقعك الحالي. يستخدم التطبيق هذه البيانات تلقائياً عند تحديد وجهة.'
+                          : 'Downloads this area around your current location and uses it automatically when you pick a destination.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppColors.textDark.withOpacity(0.7),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (options == null)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else
+                      ...options.map((option) {
+                        final radius = option.radiusKm.round();
+                        final label = radius == 1
+                            ? (isArabic ? 'منطقة صغيرة' : 'Small area')
+                            : radius == 3
+                            ? (isArabic ? 'منطقة متوسطة' : 'Medium area')
+                            : (isArabic ? 'منطقة كبيرة' : 'Large area');
+
+                        return _ReportOption(
+                          icon: Icons.download_rounded,
+                          color: Colors.blue,
+                          title:
+                              '$label - $radius km • ${_formatDownloadSize(option.estimatedSizeMb)}',
+                          onTap: () => _downloadOfflineMapArea(
+                            radiusKm: option.radiusKm,
+                          ),
+                        );
+                      }),
+                  ],
+                );
+              },
             ),
           ),
         );
@@ -348,17 +651,13 @@ class _MapScreenState extends State<MapScreen> {
 
     setState(() {
       _isDownloadingMap = true;
+      _mapDownloadProgress = 0;
+      _mapDownloadStatus = 'Preparing ${radiusKm.round()} km download...';
     });
 
     try {
-      final region = CircleRegion(_myLocation, radiusKm).toDownloadable(
-        minZoom: 12,
-        maxZoom: 16,
-        options: TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.rescate_app',
-        ),
-      );
+      final downloadCenter = _myLocation;
+      final region = _downloadRegionFor(radiusKm);
 
       final progressStream = FMTCStore(_mapStoreName).download.startForeground(
         region: region,
@@ -367,13 +666,63 @@ class _MapScreenState extends State<MapScreen> {
         skipSeaTiles: false,
       );
 
-      await for (final _ in progressStream) {}
+      await for (final progress in progressStream) {
+        if (!mounted) return;
+        final percent = progress.maxTiles == 0
+            ? 100.0
+            : (progress.attemptedTiles / progress.maxTiles) * 100;
+        setState(() {
+          _mapDownloadProgress = (percent / 100).clamp(0.0, 1.0);
+          _mapDownloadStatus =
+              '${progress.attemptedTiles}/${progress.maxTiles} tiles • ${percent.toStringAsFixed(0)}%';
+        });
+      }
 
       if (!mounted) return;
+      setState(() {
+        _mapDownloadProgress = 0;
+        _mapDownloadStatus = 'Preparing offline road routing data...';
+      });
+      final roadGraphReady = await _routeService.prepareRoadGraph(
+        center: downloadCenter,
+        radiusKm: radiusKm,
+      );
+      if (!mounted) return;
+      if (!roadGraphReady) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Map tiles downloaded, but offline road routing data failed to prepare.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _downloadedAreas.removeWhere((area) {
+          final distanceKm = _distance.as(
+            LengthUnit.Kilometer,
+            area.center,
+            downloadCenter,
+          );
+          return distanceKm <= math.max(area.radiusKm, radiusKm);
+        });
+        _downloadedAreas.add(
+          _DownloadedMapArea(
+            center: downloadCenter,
+            radiusKm: radiusKm,
+            downloadedAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      });
+      await _saveDownloadedAreas();
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Offline map tiles downloaded (${radiusKm.round()} km). Routes need road data separately.',
+            'Offline map and routing data downloaded (${radiusKm.round()} km).',
           ),
         ),
       );
@@ -386,13 +735,20 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) {
         setState(() {
           _isDownloadingMap = false;
+          _mapDownloadProgress = 0;
+          _mapDownloadStatus = '';
         });
       }
     }
   }
 
-  Future<void> _addReport(_ReportType type, LatLng point, {double? dangerRadius}) async {
-    final reportNumber = _reports.where((report) => report.type == type).length + 1;
+  Future<void> _addReport(
+    _ReportType type,
+    LatLng point, {
+    double? dangerRadius,
+  }) async {
+    final reportNumber =
+        _reports.where((report) => report.type == type).length + 1;
     final isDanger = type == _ReportType.danger;
     final radius = isDanger ? (dangerRadius ?? _pendingDangerRadius) : 80.0;
     final shouldRecalculateRoute = _showRoute;
@@ -402,8 +758,12 @@ class _MapScreenState extends State<MapScreen> {
       type: type,
       point: point,
       radius: radius,
-      label: isDanger ? 'Danger report $reportNumber' : 'Aid place $reportNumber',
-      detail: isDanger ? 'Reported danger zone (${radius.round()}m)' : 'Reported aid place',
+      label: isDanger
+          ? 'Danger report $reportNumber'
+          : 'Aid place $reportNumber',
+      detail: isDanger
+          ? 'Reported danger zone (${radius.round()}m)'
+          : 'Reported aid place',
       createdAt: DateTime.now().millisecondsSinceEpoch,
     );
 
@@ -419,7 +779,9 @@ class _MapScreenState extends State<MapScreen> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(isDanger ? 'Danger zone reported' : 'Aid place reported')),
+      SnackBar(
+        content: Text(isDanger ? 'Danger zone reported' : 'Aid place reported'),
+      ),
     );
   }
 
@@ -452,7 +814,9 @@ class _MapScreenState extends State<MapScreen> {
     _addReport(
       pendingType,
       point,
-      dangerRadius: pendingType == _ReportType.danger ? _pendingDangerRadius : null,
+      dangerRadius: pendingType == _ReportType.danger
+          ? _pendingDangerRadius
+          : null,
     );
   }
 
@@ -482,25 +846,36 @@ class _MapScreenState extends State<MapScreen> {
                 _ReportOption(
                   icon: Icons.warning_rounded,
                   color: AppColors.primaryRed,
-                  title: isArabic ? 'خطر صغير 100 متر' : 'Pick small danger zone - 100m',
-                  onTap: () => _startMapPick(_ReportType.danger, dangerRadius: 100),
+                  title: isArabic
+                      ? 'خطر صغير 100 متر'
+                      : 'Pick small danger zone - 100m',
+                  onTap: () =>
+                      _startMapPick(_ReportType.danger, dangerRadius: 100),
                 ),
                 _ReportOption(
                   icon: Icons.warning_rounded,
                   color: AppColors.primaryRed,
-                  title: isArabic ? 'خطر متوسط 200 متر' : 'Pick medium danger zone - 200m',
-                  onTap: () => _startMapPick(_ReportType.danger, dangerRadius: 200),
+                  title: isArabic
+                      ? 'خطر متوسط 200 متر'
+                      : 'Pick medium danger zone - 200m',
+                  onTap: () =>
+                      _startMapPick(_ReportType.danger, dangerRadius: 200),
                 ),
                 _ReportOption(
                   icon: Icons.warning_rounded,
                   color: AppColors.primaryRed,
-                  title: isArabic ? 'خطر كبير 350 متر' : 'Pick large danger zone - 350m',
-                  onTap: () => _startMapPick(_ReportType.danger, dangerRadius: 350),
+                  title: isArabic
+                      ? 'خطر كبير 350 متر'
+                      : 'Pick large danger zone - 350m',
+                  onTap: () =>
+                      _startMapPick(_ReportType.danger, dangerRadius: 350),
                 ),
                 _ReportOption(
                   icon: Icons.add_location_alt_rounded,
                   color: Colors.green,
-                  title: isArabic ? 'تحديد مركز مساعدة على الخريطة' : 'Pick aid place on map',
+                  title: isArabic
+                      ? 'تحديد مركز مساعدة على الخريطة'
+                      : 'Pick aid place on map',
                   onTap: () => _startMapPick(_ReportType.aid),
                 ),
               ],
@@ -514,7 +889,9 @@ class _MapScreenState extends State<MapScreen> {
   Marker _buildReportMarker(_MapReport report, bool isArabic) {
     final isDanger = report.type == _ReportType.danger;
     final color = isDanger ? AppColors.primaryRed : Colors.green.shade700;
-    final icon = isDanger ? Icons.warning_rounded : Icons.local_hospital_rounded;
+    final icon = isDanger
+        ? Icons.warning_rounded
+        : Icons.local_hospital_rounded;
 
     return Marker(
       point: report.point,
@@ -596,7 +973,9 @@ class _MapScreenState extends State<MapScreen> {
                 Row(
                   children: [
                     Icon(
-                      isDanger ? Icons.warning_rounded : Icons.local_hospital_rounded,
+                      isDanger
+                          ? Icons.warning_rounded
+                          : Icons.local_hospital_rounded,
                       color: isDanger ? AppColors.primaryRed : Colors.green,
                     ),
                     const SizedBox(width: 10),
@@ -615,7 +994,10 @@ class _MapScreenState extends State<MapScreen> {
                 const SizedBox(height: 8),
                 Text(
                   report.detail,
-                  style: GoogleFonts.poppins(fontSize: 13, color: AppColors.textDark),
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppColors.textDark,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 if (isDanger)
@@ -626,16 +1008,20 @@ class _MapScreenState extends State<MapScreen> {
                         Navigator.pop(context);
                         await _removeReport(report);
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        ScaffoldMessenger.of(this.context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              isArabic ? 'تم حذف منطقة الخطر' : 'Danger zone removed',
+                              isArabic
+                                  ? 'تم حذف منطقة الخطر'
+                                  : 'Danger zone removed',
                             ),
                           ),
                         );
                       },
                       icon: const Icon(Icons.delete_outline_rounded),
-                      label: Text(isArabic ? 'حذف منطقة الخطر' : 'Remove danger zone'),
+                      label: Text(
+                        isArabic ? 'حذف منطقة الخطر' : 'Remove danger zone',
+                      ),
                     ),
                   ),
                 if (!isDanger)
@@ -647,7 +1033,9 @@ class _MapScreenState extends State<MapScreen> {
                         _setSafeRouteTo(report.point);
                       },
                       icon: const Icon(Icons.route_rounded),
-                      label: Text(isArabic ? 'اعرض طريق آمن' : 'Show safe route'),
+                      label: Text(
+                        isArabic ? 'اعرض طريق آمن' : 'Show safe route',
+                      ),
                     ),
                   ),
               ],
@@ -702,22 +1090,33 @@ class _MapScreenState extends State<MapScreen> {
                     height: 70,
                     child: Column(
                       children: [
-                        Icon(LucideIcons.mapPin,
-                            color: AppColors.primaryRed, size: 28),
-                        Text(isArabic ? 'الهلال الأحمر' : 'RED CRESCENT',
-                            style: GoogleFonts.poppins(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primaryRed)),
-                        Text(isArabic ? 'النقطة 3' : 'POINT 3',
-                            style: GoogleFonts.poppins(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primaryRed)),
+                        Icon(
+                          LucideIcons.mapPin,
+                          color: AppColors.primaryRed,
+                          size: 28,
+                        ),
+                        Text(
+                          isArabic ? 'الهلال الأحمر' : 'RED CRESCENT',
+                          style: GoogleFonts.poppins(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryRed,
+                          ),
+                        ),
+                        Text(
+                          isArabic ? 'النقطة 3' : 'POINT 3',
+                          style: GoogleFonts.poppins(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryRed,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  ..._reports.map((report) => _buildReportMarker(report, isArabic)),
+                  ..._reports.map(
+                    (report) => _buildReportMarker(report, isArabic),
+                  ),
                   if (_routeDestination != null)
                     Marker(
                       point: _routeDestination!,
@@ -761,11 +1160,7 @@ class _MapScreenState extends State<MapScreen> {
                       point: LatLng(33.51, 36.29),
                       width: 120,
                       height: 40,
-                      child: Card(
-                        child: Center(
-                          child: Text('Routing...'),
-                        ),
-                      ),
+                      child: Card(child: Center(child: Text('Routing...'))),
                     ),
                   ],
                 ),
@@ -774,23 +1169,34 @@ class _MapScreenState extends State<MapScreen> {
                 markers: [
                   Marker(
                     point: _myLocation,
-                    width: 40,
-                    height: 40,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.3),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Container(
-                          width: 14,
-                          height: 14,
-                          decoration: const BoxDecoration(
-                            color: Colors.blue,
+                    width: 46,
+                    height: 46,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.3),
                             shape: BoxShape.circle,
                           ),
                         ),
-                      ),
+                        Transform.rotate(
+                          angle: ((_headingDegrees ?? 0) * math.pi) / 180,
+                          child: const Icon(
+                            Icons.navigation_rounded,
+                            color: Colors.blue,
+                            size: 24,
+                          ),
+                        ),
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -803,8 +1209,11 @@ class _MapScreenState extends State<MapScreen> {
             top: 48,
             left: 16,
             child: _MapButton(
-              child: const Icon(LucideIcons.chevronLeft,
-                  color: AppColors.textDark, size: 20),
+              child: const Icon(
+                LucideIcons.chevronLeft,
+                color: AppColors.textDark,
+                size: 20,
+              ),
               onTap: () => Navigator.maybePop(context),
             ),
           ),
@@ -815,7 +1224,10 @@ class _MapScreenState extends State<MapScreen> {
               left: 68,
               right: 68,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.94),
                   borderRadius: BorderRadius.circular(14),
@@ -829,10 +1241,16 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 child: Text(
                   _isPickingRouteDestination
-                      ? (isArabic ? 'اضغط على وجهتك على الخريطة' : 'Tap your destination on the map')
+                      ? (isArabic
+                            ? 'اضغط على وجهتك على الخريطة'
+                            : 'Tap your destination on the map')
                       : _pendingReportType == _ReportType.danger
-                          ? (isArabic ? 'اضغط على الخريطة لتحديد الخطر' : 'Tap map to place danger')
-                          : (isArabic ? 'اضغط على الخريطة لتحديد المساعدة' : 'Tap map to place aid'),
+                      ? (isArabic
+                            ? 'اضغط على الخريطة لتحديد الخطر'
+                            : 'Tap map to place danger')
+                      : (isArabic
+                            ? 'اضغط على الخريطة لتحديد المساعدة'
+                            : 'Tap map to place aid'),
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
                     fontSize: 12,
@@ -843,6 +1261,35 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
 
+          Positioned(
+            left: 16,
+            bottom: 116,
+            child: _LocationInfoPanel(
+              areaLabel: _approximateAreaLabel(),
+              latitude: _myLocation.latitude,
+              longitude: _myLocation.longitude,
+              heading: _formatHeading(),
+              isFollowingHeading: _followHeading,
+              showCoordinates: _showCoordinateDetails,
+              onTap: () {
+                setState(() {
+                  _showCoordinateDetails = !_showCoordinateDetails;
+                });
+              },
+            ),
+          ),
+
+          if (_isDownloadingMap)
+            Positioned(
+              left: 16,
+              right: 72,
+              bottom: 200,
+              child: _DownloadProgressPanel(
+                progress: _mapDownloadProgress,
+                status: _mapDownloadStatus,
+              ),
+            ),
+
           // ── Zoom Controls ────────────────────────────────────
           Positioned(
             top: 48,
@@ -850,14 +1297,20 @@ class _MapScreenState extends State<MapScreen> {
             child: Column(
               children: [
                 _MapButton(
-                  child: const Icon(LucideIcons.plus,
-                      color: AppColors.textDark, size: 18),
+                  child: const Icon(
+                    LucideIcons.plus,
+                    color: AppColors.textDark,
+                    size: 18,
+                  ),
                   onTap: _zoomIn,
                 ),
                 const SizedBox(height: 8),
                 _MapButton(
-                  child: const Icon(LucideIcons.minus,
-                      color: AppColors.textDark, size: 18),
+                  child: const Icon(
+                    LucideIcons.minus,
+                    color: AppColors.textDark,
+                    size: 18,
+                  ),
                   onTap: _zoomOut,
                 ),
               ],
@@ -866,34 +1319,60 @@ class _MapScreenState extends State<MapScreen> {
 
           // ── Bottom Controls ──────────────────────────────────
           Positioned(
-            bottom: 100,
+            bottom: 116,
             right: 16,
             child: Column(
               children: [
                 _MapButton(
                   child: Icon(
-                    _isDownloadingMap ? Icons.hourglass_top_rounded : Icons.download_rounded,
-                    color: _isDownloadingMap ? AppColors.primaryRed : AppColors.textDark,
+                    Icons.arrow_upward_rounded,
+                    color: _followHeading
+                        ? AppColors.primaryRed
+                        : AppColors.textDark,
+                    size: 20,
+                  ),
+                  onTap: _toggleHeadingFollow,
+                ),
+                const SizedBox(height: 8),
+                _MapButton(
+                  child: Icon(
+                    _isDownloadingMap
+                        ? Icons.hourglass_top_rounded
+                        : Icons.download_rounded,
+                    color: _isDownloadingMap
+                        ? AppColors.primaryRed
+                        : AppColors.textDark,
                     size: 20,
                   ),
                   onTap: () => _showOfflineMapDownloadSheet(isArabic),
                 ),
                 const SizedBox(height: 8),
                 _MapButton(
-                  child: const Icon(Icons.add_location_alt_rounded,
-                      color: AppColors.textDark, size: 20),
+                  child: const Icon(
+                    Icons.add_location_alt_rounded,
+                    color: AppColors.textDark,
+                    size: 20,
+                  ),
                   onTap: () => _showReportSheet(isArabic),
                 ),
                 const SizedBox(height: 8),
                 _MapButton(
-                  child: const Icon(LucideIcons.crosshair,
-                      color: AppColors.textDark, size: 18),
+                  child: const Icon(
+                    LucideIcons.crosshair,
+                    color: AppColors.textDark,
+                    size: 18,
+                  ),
                   onTap: _centerMap,
                 ),
                 const SizedBox(height: 8),
                 _MapButton(
-                  child: Icon(LucideIcons.navigation,
-                      color: _showRoute ? AppColors.primaryRed : AppColors.textDark, size: 18),
+                  child: Icon(
+                    LucideIcons.navigation,
+                    color: _showRoute
+                        ? AppColors.primaryRed
+                        : AppColors.textDark,
+                    size: 18,
+                  ),
                   onTap: _toggleRoute,
                 ),
               ],
@@ -930,6 +1409,161 @@ class _MapButton extends StatelessWidget {
           ],
         ),
         child: Center(child: child),
+      ),
+    );
+  }
+}
+
+class _LocationInfoPanel extends StatelessWidget {
+  final String areaLabel;
+  final double latitude;
+  final double longitude;
+  final String heading;
+  final bool isFollowingHeading;
+  final bool showCoordinates;
+  final VoidCallback onTap;
+
+  const _LocationInfoPanel({
+    required this.areaLabel,
+    required this.latitude,
+    required this.longitude,
+    required this.heading,
+    required this.isFollowingHeading,
+    required this.showCoordinates,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 230),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.92),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.place_rounded,
+                  color: AppColors.primaryRed,
+                  size: 15,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    areaLabel,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  showCoordinates
+                      ? Icons.expand_more_rounded
+                      : Icons.chevron_right_rounded,
+                  color: AppColors.textDark.withOpacity(0.65),
+                  size: 16,
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Orientation $heading${isFollowingHeading ? ' • map up' : ''}',
+              style: GoogleFonts.poppins(
+                fontSize: 10.5,
+                color: AppColors.textDark.withOpacity(0.75),
+              ),
+            ),
+            if (showCoordinates) ...[
+              const SizedBox(height: 3),
+              Text(
+                '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}',
+                style: GoogleFonts.poppins(
+                  fontSize: 9,
+                  color: AppColors.textDark.withOpacity(0.62),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DownloadProgressPanel extends StatelessWidget {
+  final double progress;
+  final String status;
+
+  const _DownloadProgressPanel({required this.progress, required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Downloading map data',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress <= 0 ? null : progress,
+              minHeight: 8,
+              backgroundColor: AppColors.textDark.withOpacity(0.12),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                AppColors.primaryRed,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            status,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              color: AppColors.textDark.withOpacity(0.72),
+            ),
+          ),
+        ],
       ),
     );
   }

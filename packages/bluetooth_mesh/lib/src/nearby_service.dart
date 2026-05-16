@@ -1,6 +1,6 @@
+// TODO(security): wire Ed25519 ephemeral identity per CONTRIBUTING.md
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:device_info_plus/device_info_plus.dart';
