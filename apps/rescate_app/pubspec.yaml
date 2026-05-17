@@ -36,7 +36,6 @@ dependencies:
   sqflite: ^2.4.2
   sqflite_common_ffi_web: ^1.1.1
   shared_preferences: ^2.5.5
-  speech_to_text: ^7.3.0
   geolocator: ^14.0.2
   sensors_plus: ^6.1.2
   flutter_map_tile_caching: ^9.0.1

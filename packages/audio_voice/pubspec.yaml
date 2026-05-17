@@ -1,5 +1,5 @@
 name: audio_voice
-description: Module 2 - Audio & Voice Interface (Offline VAD, Piper TTS, Multimodal Audio)
+description: Module 2 - Audio & Voice Interface (Native TTS & STT for Arabic and English)
 version: 0.0.1
 publish_to: 'none'
 
@@ -10,7 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # Add Piper TTS and VAD dependencies here later
+  flutter_tts: ^4.2.1
+  speech_to_text: ^7.3.0
 
 dev_dependencies:
   flutter_test:
@@ -18,4 +19,3 @@ dev_dependencies:
   flutter_lints: ^3.0.0
 
 resolution: workspace
-

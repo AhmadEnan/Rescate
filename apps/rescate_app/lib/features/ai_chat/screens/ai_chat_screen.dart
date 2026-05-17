@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:ai_inference/ai_inference.dart';
+import 'package:audio_voice/audio_voice.dart';
 import 'package:offline_data/offline_data.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -26,6 +27,12 @@ class _AiChatScreenState extends State<AiChatScreen>
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final LlmState _llmState = LlmState.instance;
+  final TtsService _tts = TtsService.instance;
+  final SttService _stt = SttService.instance;
+
+  /// Track the last AI message index we already triggered TTS for so we
+  /// don't re-read the same message on every state change.
+  int _lastTtsMessageIndex = -1;
 
   @override
   bool get wantKeepAlive => true;
@@ -34,22 +41,46 @@ class _AiChatScreenState extends State<AiChatScreen>
   void initState() {
     super.initState();
     _llmState.addListener(_onStateChanged);
+    _tts.addListener(_onVoiceChanged);
+    _stt.addListener(_onVoiceChanged);
   }
 
   @override
   void dispose() {
     _llmState.removeListener(_onStateChanged);
-    // Do NOT dispose the singleton.
+    _tts.removeListener(_onVoiceChanged);
+    _stt.removeListener(_onVoiceChanged);
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
+  void _onVoiceChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   void _onStateChanged() {
     if (!mounted) return;
     setState(() {});
-    // Scroll to the bottom whenever the state changes (new token received).
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    _autoReadIfNeeded();
+  }
+
+  /// Automatically read the latest AI message aloud when TTS is enabled
+  /// and the message has finished streaming.
+  void _autoReadIfNeeded() {
+    if (!_tts.isEnabled) return;
+    final messages = _llmState.messages;
+    if (messages.isEmpty) return;
+    final lastIndex = messages.length - 1;
+    final last = messages[lastIndex];
+    // Only trigger when an AI message just finished streaming.
+    if (!last.isUser && !last.isStreaming && lastIndex != _lastTtsMessageIndex) {
+      _lastTtsMessageIndex = lastIndex;
+      final isArabic = last.text.contains(RegExp(r'[\u0600-\u06FF]'));
+      _tts.speak(last.text, isArabic: isArabic);
+    }
   }
 
   void _scrollToBottom() {
@@ -146,6 +177,10 @@ class _AiChatScreenState extends State<AiChatScreen>
                 title: _llmState.conversations.isEmpty
                     ? 'New chat'
                     : _llmState.activeConversation.title,
+                ttsEnabled: _tts.isEnabled,
+                isSpeaking: _tts.isSpeaking,
+                onToggleTts: () => _tts.setEnabled(!_tts.isEnabled),
+                onStopTts: () => _tts.stop(),
               ),
               Expanded(child: _buildMessageList(isArabic)),
               _buildInputBar(isArabic),
@@ -217,8 +252,113 @@ class _AiChatScreenState extends State<AiChatScreen>
                 ],
               ),
             ),
+          // ── STT listening indicator ──────────────────────────────
+          if (_stt.isListening)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryRed.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.primaryRed.withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.mic, size: 14, color: AppColors.primaryRed)
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .fadeIn(duration: 600.ms)
+                        .then()
+                        .fadeOut(duration: 600.ms),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _stt.currentWords.isNotEmpty
+                            ? _stt.currentWords
+                            : (isArabic ? 'جاري الاستماع…' : 'Listening…'),
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: AppColors.textDark.withOpacity(0.7),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () async {
+                        await _stt.stopListening();
+                        if (_stt.finalWords.isNotEmpty) {
+                          _controller.text = _stt.finalWords;
+                          _controller.selection = TextSelection.fromPosition(
+                            TextPosition(offset: _controller.text.length),
+                          );
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryRed,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(LucideIcons.square, size: 12, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           Row(
             children: [
+              // ── Mic button ──────────────────────────────────────────────
+              GestureDetector(
+                onTap: canSend
+                    ? () async {
+                        if (_stt.isListening) {
+                          await _stt.stopListening();
+                          if (_stt.finalWords.isNotEmpty) {
+                            _controller.text = _stt.finalWords;
+                            _controller.selection = TextSelection.fromPosition(
+                              TextPosition(offset: _controller.text.length),
+                            );
+                          }
+                        } else {
+                          // Stop any ongoing TTS before listening.
+                          if (_tts.isSpeaking) await _tts.stop();
+                          await _stt.startListening(
+                            isArabic: isArabic,
+                            onResult: (text, isFinal) {
+                              _controller.text = text;
+                              _controller.selection = TextSelection.fromPosition(
+                                TextPosition(offset: text.length),
+                              );
+                              if (isFinal && text.trim().isNotEmpty) {
+                                // Auto-send after final result.
+                                _sendMessage(isArabic);
+                              }
+                            },
+                          );
+                        }
+                      }
+                    : null,
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: _stt.isListening
+                        ? AppColors.primaryRed
+                        : AppColors.aiAccentPink.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _stt.isListening ? LucideIcons.micOff : LucideIcons.mic,
+                    color: _stt.isListening
+                        ? Colors.white
+                        : (canSend ? AppColors.primaryRed : AppColors.textDark.withOpacity(0.3)),
+                    size: 18,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               // ── Text field ─────────────────────────────────────────────
               Expanded(
                 child: Container(
@@ -227,7 +367,9 @@ class _AiChatScreenState extends State<AiChatScreen>
                     color: AppColors.aiAccentPink.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(30),
                     border: Border.all(
-                      color: AppColors.aiAccentPink,
+                      color: _stt.isListening
+                          ? AppColors.primaryRed
+                          : AppColors.aiAccentPink,
                       width: 1.5,
                     ),
                   ),
@@ -236,13 +378,15 @@ class _AiChatScreenState extends State<AiChatScreen>
                     enabled: canSend,
                     onSubmitted: canSend ? (_) => _sendMessage(isArabic) : null,
                     decoration: InputDecoration(
-                      hintText: !_llmState.isModelReady
-                          ? (isArabic
-                              ? 'قم بتحميل نموذج أولاً…'
-                              : 'Load a model first…')
-                          : (isArabic
-                              ? 'اكتب رسالتك…'
-                              : 'Type your message…'),
+                      hintText: _stt.isListening
+                          ? (isArabic ? 'تحدث الآن…' : 'Speak now…')
+                          : !_llmState.isModelReady
+                              ? (isArabic
+                                  ? 'قم بتحميل نموذج أولاً…'
+                                  : 'Load a model first…')
+                              : (isArabic
+                                  ? 'اكتب رسالتك…'
+                                  : 'Type your message…'),
                       hintStyle: GoogleFonts.inter(
                         color: const Color(0xFFB0A0A0),
                         fontSize: 14,
@@ -254,7 +398,7 @@ class _AiChatScreenState extends State<AiChatScreen>
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
 
               // ── Send button ────────────────────────────────────────────
               GestureDetector(
@@ -294,11 +438,19 @@ class _ChatToolbar extends StatelessWidget {
     required this.onNewChat,
     required this.onHistory,
     required this.title,
+    required this.ttsEnabled,
+    required this.isSpeaking,
+    required this.onToggleTts,
+    required this.onStopTts,
   });
 
   final VoidCallback onNewChat;
   final VoidCallback onHistory;
   final String title;
+  final bool ttsEnabled;
+  final bool isSpeaking;
+  final VoidCallback onToggleTts;
+  final VoidCallback onStopTts;
 
   @override
   Widget build(BuildContext context) {
@@ -339,6 +491,35 @@ class _ChatToolbar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          // ── TTS toggle ─────────────────────────────────────────
+          GestureDetector(
+            onTap: isSpeaking ? onStopTts : onToggleTts,
+            child: Tooltip(
+              message: isSpeaking
+                  ? 'Stop speaking'
+                  : (ttsEnabled ? 'Disable auto-read' : 'Enable auto-read'),
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: ttsEnabled
+                      ? AppColors.primaryRed.withOpacity(0.15)
+                      : AppColors.primaryRed.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isSpeaking
+                      ? LucideIcons.volumeX
+                      : ttsEnabled
+                          ? LucideIcons.volume2
+                          : LucideIcons.volumeX,
+                  size: 16,
+                  color: ttsEnabled ? AppColors.primaryRed : AppColors.primaryRed.withOpacity(0.4),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
           _toolbarButton(LucideIcons.plus, 'New chat', onNewChat),
           const SizedBox(width: 4),
           _toolbarButton(LucideIcons.history, 'History', onHistory),
