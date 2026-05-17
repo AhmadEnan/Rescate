@@ -11,10 +11,12 @@ import 'package:offline_data/offline_data.dart';
 import 'package:sensor_availability/sensor_availability.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/providers/app_state.dart';
 import 'features/ai_chat/state/llm_state.dart';
 import 'features/home/screens/main_screen.dart';
+import 'features/onboarding/screens/onboarding_screen.dart';
 
 Future<void> main() async {
   Profiler.markSessionStart();
@@ -34,9 +36,17 @@ Future<void> main() async {
   }
   await Profiler.span('bootstrap.initOfflineMapCache', _initOfflineMapCache);
   unawaited(_detectSensorsAtStartup());
+
+  final prefs = await Profiler.span(
+    'bootstrap.sharedPreferences',
+    () => SharedPreferences.getInstance(),
+  );
+  final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
+
   runApp(_BootstrapApp(
     measurementStore:
         Profiler.span('bootstrap.openMeasurementStore', () => MeasurementStore.open()),
+    isFirstLaunch: isFirstLaunch,
   ));
 }
 
@@ -64,9 +74,13 @@ Future<void> _detectSensorsAtStartup() async {
 // ── Loading wrapper ─────────────────────────────────────────────────────────────
 
 class _BootstrapApp extends StatelessWidget {
-  const _BootstrapApp({required this.measurementStore});
+  const _BootstrapApp({
+    required this.measurementStore,
+    required this.isFirstLaunch,
+  });
 
   final Future<MeasurementStore> measurementStore;
+  final bool isFirstLaunch;
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +88,10 @@ class _BootstrapApp extends StatelessWidget {
       future: measurementStore,
       builder: (context, snapshot) {
         if (snapshot.hasData) {
-          return RescateApp(measurementStore: snapshot.data!);
+          return RescateApp(
+            measurementStore: snapshot.data!,
+            isFirstLaunch: isFirstLaunch,
+          );
         }
         return MaterialApp(
           title: 'Rescate',
@@ -99,9 +116,14 @@ class _BootstrapApp extends StatelessWidget {
 // ── Main application ────────────────────────────────────────────────────────────
 
 class RescateApp extends StatefulWidget {
-  const RescateApp({required this.measurementStore, super.key});
+  const RescateApp({
+    required this.measurementStore,
+    required this.isFirstLaunch,
+    super.key,
+  });
 
   final MeasurementStore measurementStore;
+  final bool isFirstLaunch;
 
   @override
   State<RescateApp> createState() => _RescateAppState();
@@ -159,7 +181,9 @@ class _RescateAppState extends State<RescateApp> with WidgetsBindingObserver {
             },
           ),
         },
-        home: MainScreen(key: mainScreenKey),
+        home: widget.isFirstLaunch
+            ? const OnboardingScreen()
+            : MainScreen(key: mainScreenKey),
       ),
     );
   }

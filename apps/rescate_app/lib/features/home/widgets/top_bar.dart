@@ -49,14 +49,10 @@ class _RescateMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Image.asset(
+      'assets/logo.png',
       width: 40,
       height: 40,
-      decoration: const BoxDecoration(
-        color: AppColors.primaryRed,
-        shape: BoxShape.circle,
-      ),
-      child: const Icon(LucideIcons.radio, color: Colors.white, size: 22),
     );
   }
 }

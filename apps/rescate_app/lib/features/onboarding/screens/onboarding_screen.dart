@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../home/screens/main_screen.dart';
 import '../../../core/providers/app_state.dart';
 
@@ -219,19 +220,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           final isArabic = _selectedLanguage == 'العربية';
           return Directionality(
             textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.7,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(32),
+                topRight: Radius.circular(32),
               ),
-              decoration: const BoxDecoration(
-                color: _OnboardingColors.background,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(32),
-                  topRight: Radius.circular(32),
-                ),
-              ),
-              child: SafeArea(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _OnboardingColors.background.withOpacity(0.85),
+                    border: Border(
+                      top: BorderSide(
+                        color: Colors.white.withOpacity(0.4),
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                  child: SafeArea(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -273,7 +283,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
               ),
             ),
-          );
+          ),
+        ),
+      );
         },
       ),
     );
@@ -427,10 +439,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       topRight: Radius.circular(topRightRadius),
                     ),
                     gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [panelColor1, panelColor2],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        panelColor1.withOpacity(0.95),
+                        panelColor2,
+                      ],
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, -5),
+                      ),
+                    ],
                   ),
                   child: CustomPaint(
                     foregroundPainter: _PanelBorderPainter(
@@ -489,9 +511,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               alignment: Alignment.center,
                               child: Opacity(
                                 opacity: ((p - 1.0) * 0.20).clamp(0.0, 0.20),
-                                child: Icon(
-                                  LucideIcons.radio,
-                                  size: panelH * 0.6,
+                                child: Image.asset(
+                                  'assets/logo.png',
+                                  width: panelH * 0.6,
+                                  height: panelH * 0.6,
                                   color: _OnboardingColors.borderBrown,
                                 ),
                               ),
@@ -515,19 +538,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 child: Align(
                   alignment: logoAlignment,
-                  child: Container(
+                  child: Image.asset(
+                    'assets/logo.png',
                     width: 48,
                     height: 48,
-                    decoration: const BoxDecoration(
-                      color: _OnboardingColors.borderBrown,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      LucideIcons.radio,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                  ),
+                  )
+                  .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                  .scaleXY(begin: 1.0, end: 1.08, duration: 1500.ms, curve: Curves.easeInOut),
                 ),
               ),
             ),
@@ -539,6 +556,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               itemBuilder: (_, i) => _OnboardingPage(
                 data: _pages[i],
                 pageIndex: i,
+                isCurrentPage: i == currentIndex,
                 selectedLanguage: _selectedLanguage,
                 onLanguageTap: _showLanguageModal,
                 title: _localizedContent[_selectedLanguage]![i]['title']!,
@@ -605,6 +623,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   decoration: BoxDecoration(
                     color: _pages[currentIndex].textColor,
                     borderRadius: BorderRadius.circular(30),
+                    boxShadow: currentIndex == _pages.length - 1
+                        ? [
+                            BoxShadow(
+                              color: _pages[currentIndex].textColor.withOpacity(0.3),
+                              blurRadius: 16,
+                              offset: const Offset(0, 4),
+                            )
+                          ]
+                        : [],
                   ),
                   child: AnimatedDefaultTextStyle(
                     duration: const Duration(milliseconds: 300),
@@ -632,6 +659,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 class _OnboardingPage extends StatelessWidget {
   final _PageData data;
   final int pageIndex;
+  final bool isCurrentPage;
   final String selectedLanguage;
   final VoidCallback onLanguageTap;
   final String title;
@@ -640,6 +668,7 @@ class _OnboardingPage extends StatelessWidget {
   const _OnboardingPage({
     required this.data,
     required this.pageIndex,
+    required this.isCurrentPage,
     required this.selectedLanguage,
     required this.onLanguageTap,
     required this.title,
@@ -674,7 +703,10 @@ class _OnboardingPage extends StatelessWidget {
                     height: 1.05,
                     letterSpacing: -0.5,
                   ),
-                ),
+                )
+                .animate(target: isCurrentPage ? 1 : 0)
+                .slideY(begin: 0.1, end: 0, duration: 600.ms, curve: Curves.easeOutCubic)
+                .fadeIn(duration: 600.ms),
                 const SizedBox(height: 20),
                 Text(
                   description,
@@ -684,7 +716,10 @@ class _OnboardingPage extends StatelessWidget {
                     color: data.textColor.withOpacity(0.75),
                     height: 1.55,
                   ),
-                ),
+                )
+                .animate(target: isCurrentPage ? 1 : 0)
+                .slideY(begin: 0.1, end: 0, duration: 600.ms, delay: 100.ms, curve: Curves.easeOutCubic)
+                .fadeIn(duration: 600.ms, delay: 100.ms),
                 if (pageIndex == 0) ...[
                   const SizedBox(height: 40),
                   GestureDetector(
@@ -727,7 +762,10 @@ class _OnboardingPage extends StatelessWidget {
                         ],
                       ),
                     ),
-                  ),
+                  )
+                  .animate(target: isCurrentPage ? 1 : 0)
+                  .slideY(begin: 0.1, end: 0, duration: 600.ms, delay: 200.ms, curve: Curves.easeOutCubic)
+                  .fadeIn(duration: 600.ms, delay: 200.ms),
                 ],
               ],
             ),

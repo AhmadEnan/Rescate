@@ -14,6 +14,7 @@ dependencies:
   fftea: ^1.5.0
   flutter:
     sdk: flutter
+  google_fonts: ^6.1.0
   path_provider: ^2.1.4
   record: 5.1.2
   sensor_availability:

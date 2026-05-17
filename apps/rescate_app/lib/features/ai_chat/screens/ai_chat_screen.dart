@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:ai_inference/ai_inference.dart';
+import 'package:offline_data/offline_data.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
@@ -61,11 +62,28 @@ class _AiChatScreenState extends State<AiChatScreen>
     }
   }
 
-  void _sendMessage(bool isArabic) {
+  void _sendMessage(bool isArabic) async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     _controller.clear();
-    _llmState.sendMessage(text, isArabic: isArabic);
+
+    String contextString = '';
+    try {
+      final store = await MeasurementStore.open();
+      final recent = await store.recentAll(limit: 5);
+      await store.close();
+      if (recent.isNotEmpty) {
+        contextString = '\n\n[SYSTEM_VITALS_CONTEXT: Recent Vitals - ';
+        for (var m in recent) {
+          contextString += '${m.id.name}: ${m.primary?.value?.toStringAsFixed(1)} ${m.primary?.unit}, ';
+        }
+        contextString += ']';
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    _llmState.sendMessage(text + contextString, isArabic: isArabic);
   }
 
   void _openModelSetup() {
@@ -104,6 +122,20 @@ class _AiChatScreenState extends State<AiChatScreen>
           child: Column(
             children: [
               const TopBar(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    isArabic ? 'المساعد الطبي' : 'AI Assistant',
+                    style: GoogleFonts.poppins(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                ),
+              ),
               _ModelStatusBanner(
                 onSetupTap: _openModelSetup,
                 llmState: _llmState,
@@ -270,37 +302,65 @@ class _ChatToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+      padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Row(
         children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: AppColors.primaryRed.withOpacity(0.6),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              title,
-              style: GoogleFonts.inter(
+              title.replaceAll(RegExp(r'\n\n\[SYSTEM_VITALS_CONTEXT:.*?\]'), ''),
+              style: GoogleFonts.poppins(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textDark.withOpacity(0.7),
+                color: AppColors.textDark,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          IconButton(
-            tooltip: 'New chat',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(LucideIcons.plus,
-                size: 18, color: AppColors.primaryRed),
-            onPressed: onNewChat,
-          ),
-          IconButton(
-            tooltip: 'History',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(LucideIcons.history,
-                size: 18, color: AppColors.primaryRed),
-            onPressed: onHistory,
-          ),
+          _toolbarButton(LucideIcons.plus, 'New chat', onNewChat),
+          const SizedBox(width: 4),
+          _toolbarButton(LucideIcons.history, 'History', onHistory),
         ],
+      ),
+    );
+  }
+
+  Widget _toolbarButton(IconData icon, String tooltip, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Tooltip(
+        message: tooltip,
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: AppColors.primaryRed.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 16, color: AppColors.primaryRed),
+        ),
       ),
     );
   }
@@ -478,51 +538,148 @@ class _EmptyState extends StatelessWidget {
   final bool isArabic;
   final VoidCallback onSetupTap;
 
+  static const _suggestions = [
+    'What are signs of a heart attack?',
+    'How to treat a burn?',
+    'Normal blood pressure range?',
+    'CPR steps for adults',
+  ];
+
+  static const _suggestionsAr = [
+    'ما هي علامات النوبة القلبية؟',
+    'كيف أعالج الحرق؟',
+    'ما هو ضغط الدم الطبيعي؟',
+    'خطوات الإنعاش القلبي',
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final chips = isArabic ? _suggestionsAr : _suggestions;
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.aiAccentPink.withOpacity(0.3),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                LucideIcons.messageSquare,
-                size: 36,
-                color: AppColors.primaryRed,
-              ),
+            // Layered circles
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed.withOpacity(0.05),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primaryRed,
+                        AppColors.primaryRed.withOpacity(0.8),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primaryRed.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    LucideIcons.stethoscope,
+                    size: 28,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
             )
                 .animate()
                 .fadeIn(duration: 600.ms)
-                .scale(begin: const Offset(0.8, 0.8)),
-            const SizedBox(height: 20),
+                .scale(begin: const Offset(0.7, 0.7)),
+            const SizedBox(height: 24),
             Text(
               isArabic ? 'اسأل Rescate' : 'Ask Rescate',
-              style: GoogleFonts.inter(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
+              style: GoogleFonts.poppins(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
                 color: AppColors.textDark,
               ),
             ).animate().fadeIn(delay: 100.ms),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               isArabic
-                  ? 'مساعدك الطبي الذكي يعمل بدون إنترنت.'
-                  : 'Your offline medical AI assistant.\nLoad a model and start asking questions.',
+                  ? 'مساعدك الطبي الذكي يعمل بدون إنترنت'
+                  : 'Your offline medical AI assistant',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 14,
-                color: AppColors.textDark.withOpacity(0.55),
+                color: AppColors.textDark.withOpacity(0.5),
                 height: 1.5,
               ),
             ).animate().fadeIn(delay: 200.ms),
+            const SizedBox(height: 28),
+            // Suggestion chips
+            Text(
+              isArabic ? 'جرب أن تسأل:' : 'Try asking:',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark.withOpacity(0.35),
+              ),
+            ).animate().fadeIn(delay: 300.ms),
+            const SizedBox(height: 10),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: chips.asMap().entries.map((e) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppColors.primaryRed.withOpacity(0.12),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.02),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    e.value,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: AppColors.textDark.withOpacity(0.65),
+                    ),
+                  ),
+                )
+                    .animate()
+                    .fadeIn(delay: (350 + e.key * 80).ms)
+                    .slideY(begin: 0.15);
+              }).toList(),
+            ),
           ],
         ),
       ),
@@ -642,7 +799,6 @@ class _ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.isUser;
-    final color = isUser ? AppColors.primaryRed : AppColors.cardBackground;
     final textColor = isUser ? Colors.white : AppColors.textDark;
 
     return Row(
@@ -650,21 +806,39 @@ class _ChatBubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         if (!isUser)
-          CustomPaint(
-            size: const Size(12, 16),
-            painter: _BubbleTail(color, isLeft: true),
+          Padding(
+            padding: const EdgeInsets.only(right: 6, bottom: 2),
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: AppColors.primaryRed.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(LucideIcons.bot,
+                  size: 13, color: AppColors.primaryRed),
+            ),
           ),
         Container(
-          constraints: const BoxConstraints(maxWidth: 270),
+          constraints: const BoxConstraints(maxWidth: 280),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: color,
+            color: isUser ? AppColors.primaryRed : Colors.white,
             borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(18),
-              topRight: const Radius.circular(18),
-              bottomRight: Radius.circular(isUser ? 0 : 18),
-              bottomLeft: Radius.circular(isUser ? 18 : 0),
+              topLeft: const Radius.circular(20),
+              topRight: const Radius.circular(20),
+              bottomRight: Radius.circular(isUser ? 6 : 20),
+              bottomLeft: Radius.circular(isUser ? 20 : 6),
             ),
+            boxShadow: [
+              BoxShadow(
+                color: isUser
+                    ? AppColors.primaryRed.withOpacity(0.25)
+                    : Colors.black.withOpacity(0.04),
+                blurRadius: isUser ? 16 : 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -674,15 +848,15 @@ class _ChatBubble extends StatelessWidget {
                 _TypingIndicator(color: textColor)
               else if (!isUser && message.isStreaming) ...[
                 _StreamingText(
-                  text: message.text,
-                  style: GoogleFonts.inter(fontSize: 14, color: textColor),
+                  text: message.text.replaceAll(RegExp(r'\n\n\[SYSTEM_VITALS_CONTEXT:.*?\]'), ''),
+                  style: GoogleFonts.inter(fontSize: 14, color: textColor, height: 1.5),
                 ),
                 const SizedBox(height: 6),
                 _TypingIndicator(color: textColor),
               ] else
                 Text(
-                  message.text,
-                  style: GoogleFonts.inter(fontSize: 14, color: textColor),
+                  message.text.replaceAll(RegExp(r'\n\n\[SYSTEM_VITALS_CONTEXT:.*?\]'), ''),
+                  style: GoogleFonts.inter(fontSize: 14, color: textColor, height: 1.5),
                 ),
               if (!isUser && !message.isStreaming &&
                   (message.ttftMs != null || message.totalMs != null)) ...[
@@ -690,19 +864,14 @@ class _ChatBubble extends StatelessWidget {
                 Text(
                   _formatTimings(message),
                   style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: textColor.withValues(alpha: 0.6),
+                    fontSize: 10,
+                    color: textColor.withValues(alpha: 0.45),
                   ),
                 ),
               ],
             ],
           ),
         ),
-        if (isUser)
-          CustomPaint(
-            size: const Size(12, 16),
-            painter: _BubbleTail(color, isLeft: false),
-          ),
       ],
     );
   }

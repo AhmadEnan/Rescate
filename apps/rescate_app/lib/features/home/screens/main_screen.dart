@@ -6,6 +6,7 @@ import '../../map/screens/map_screen.dart';
 import '../../ai_chat/screens/ai_chat_screen.dart';
 import '../../educational/screens/educational_screen.dart';
 import '../../community/screens/community_screen.dart';
+import '../../measurements/screens/measurements_screen.dart';
 
 final GlobalKey<MainScreenState> mainScreenKey = GlobalKey<MainScreenState>();
 
@@ -30,6 +31,7 @@ class MainScreenState extends State<MainScreen> {
     MapScreen(),
     AiChatScreen(),
     CommunityScreen(),
+    MeasurementsScreen(),
   ];
 
   @override
@@ -37,11 +39,17 @@ class MainScreenState extends State<MainScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
-      // IndexedStack keeps every tab mounted so in-flight LLM streams,
-      // chat messages, and text input survive tab switches.
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: KeyedSubtree(
+          key: ValueKey(_currentIndex),
+          child: IndexedStack(
+            index: _currentIndex,
+            children: _screens,
+          ),
+        ),
       ),
       bottomNavigationBar: SizedBox(
         height: 100,
@@ -84,9 +92,16 @@ class MainScreenState extends State<MainScreen> {
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
                   _NavItem(
-                    icon: LucideIcons.messageSquare,
-                    label: 'Community',
+                    icon: LucideIcons.stethoscope,
+                    label: 'Consult',
                     index: 3,
+                    currentIndex: _currentIndex,
+                    onTap: (i) => setState(() => _currentIndex = i),
+                  ),
+                  _NavItem(
+                    icon: LucideIcons.activity,
+                    label: 'Vitals',
+                    index: 4,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
@@ -128,11 +143,11 @@ class _NavItem extends StatelessWidget {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
         // Active pill is wider to fit the label; 'AI Chat' needs a bit extra
-        width: isActive ? (label.length > 5 ? 118 : 100) : 52,
-        height: 52,
+        width: isActive ? (label.length > 5 ? 104 : 94) : 48,
+        height: 48,
         decoration: BoxDecoration(
           color: isActive ? const Color(0xFFA11F2B) : const Color(0xFFD9D0C7),
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: const Color(0xFFE5DDD3), width: 6),
         ),
         clipBehavior: Clip.antiAlias,

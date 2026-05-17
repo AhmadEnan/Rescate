@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:sensor_availability/sensor_availability.dart';
 
 import '../core/biometric_estimator.dart';
@@ -131,78 +132,166 @@ class _BiometricDetailScreenState extends State<BiometricDetailScreen> {
     }
   }
 
+  static const Color _bg = Color(0xFFF5EFE6);
+  static const Color _red = Color(0xFFA11F2B);
+  static const Color _textDark = Color(0xFF202020);
+  static const Color _cardBg = Color(0xFFD9D0C7);
+
   @override
   Widget build(BuildContext context) {
     final BiometricDescriptor descriptor = biometricDescriptorFor(widget.id);
     final bool supported = _estimator.isSupportedBy(_availability);
     final CaptureSession? last = _lastSession;
     return Scaffold(
-      appBar: AppBar(title: Text(descriptor.displayName)),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: <Widget>[
-                _HeaderCard(descriptor: descriptor),
-                const SizedBox(height: 12),
-                _ProtocolCard(protocol: captureProtocolFor(widget.id)),
-                const SizedBox(height: 12),
-                _LastReadingCard(measurement: _latest),
-                const SizedBox(height: 12),
-
-                // Live signal chart — shown during capture and frozen after.
-                if (last != null) ...<Widget>[
-                  _LiveSignalChart(
-                    key: ValueKey<CaptureSession>(last),
-                    session: last,
-                    label: _rawSignalLabel(widget.id),
+      backgroundColor: _bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Custom app bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back_rounded,
+                        color: _textDark),
                   ),
-                  const SizedBox(height: 12),
-                ],
-
-                if (_capturing)
-                  _CaptureProgress(
-                    progress: _progress,
-                    onCancel: () => _activeSession?.cancel(),
-                  )
-                else if (!supported)
-                  const _UnsupportedNotice()
-                else
-                  FilledButton.icon(
-                    onPressed: _capture,
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Capture'),
-                  ),
-
-                if (_error != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                  Expanded(
+                    child: Text(
+                      descriptor.displayName,
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: _textDark,
+                      ),
                     ),
                   ),
                 ],
-
-                // Stage-by-stage DSP diagnostics — shown after capture.
-                if (last != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  _LiveDiagnosticsPanel(
-                    key: ValueKey<CaptureSession>(last),
-                    session: last,
-                  ),
-                ],
-
-                const SizedBox(height: 16),
-                Text(
-                  'Recent readings',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                for (final BiometricMeasurement measurement in _history)
-                  _HistoryRow(measurement: measurement),
-              ],
+              ),
             ),
+            Expanded(
+              child: _loading
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        color: _red,
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+                      children: <Widget>[
+                        _HeaderCard(descriptor: descriptor),
+                        const SizedBox(height: 12),
+                        _ProtocolCard(protocol: captureProtocolFor(widget.id)),
+                        const SizedBox(height: 12),
+                        _LastReadingCard(measurement: _latest),
+                        const SizedBox(height: 12),
+
+                        if (last != null) ...<Widget>[
+                          _LiveSignalChart(
+                            key: ValueKey<CaptureSession>(last),
+                            session: last,
+                            label: _rawSignalLabel(widget.id),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        if (_capturing)
+                          _CaptureProgress(
+                            progress: _progress,
+                            onCancel: () => _activeSession?.cancel(),
+                          )
+                        else if (!supported)
+                          const _UnsupportedNotice()
+                        else
+                          _CaptureButton(onTap: _capture),
+
+                        if (_error != null) ...<Widget>[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _error!,
+                              style: GoogleFonts.inter(
+                                color: Colors.red.shade700,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        if (last != null) ...<Widget>[
+                          const SizedBox(height: 12),
+                          _LiveDiagnosticsPanel(
+                            key: ValueKey<CaptureSession>(last),
+                            session: last,
+                          ),
+                        ],
+
+                        const SizedBox(height: 20),
+                        Text(
+                          'Recent readings',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: _textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        for (final BiometricMeasurement measurement in _history)
+                          _HistoryRow(measurement: measurement),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CaptureButton extends StatelessWidget {
+  const _CaptureButton({required this.onTap});
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFA11F2B),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFA11F2B).withOpacity(0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              'Start Capture',
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -490,34 +579,71 @@ class _HeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              descriptor.displayName,
-              style: Theme.of(context).textTheme.titleLarge,
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            descriptor.displayName,
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF202020),
             ),
-            const SizedBox(height: 8),
-            Text(descriptor.biomarker),
-            const SizedBox(height: 8),
-            Text(
-              descriptor.methodology,
-              style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            descriptor.biomarker,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: const Color(0xFF202020).withOpacity(0.6),
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: <Widget>[
-                for (final SensorId sensor in descriptor.sourceSensors)
-                  Chip(label: Text(sensor.name)),
-              ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            descriptor.methodology,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: const Color(0xFF202020).withOpacity(0.45),
+              height: 1.4,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: <Widget>[
+              for (final SensorId sensor in descriptor.sourceSensors)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFA11F2B).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    sensor.name,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFFA11F2B),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -530,28 +656,44 @@ class _ProtocolCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextTheme textTheme = Theme.of(context).textTheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text('Capture setup', style: textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Text(protocol.preparation),
-            const SizedBox(height: 12),
-            Text('Steps', style: textTheme.labelLarge),
-            const SizedBox(height: 4),
-            for (int i = 0; i < protocol.steps.length; i++)
-              _ProtocolLine(index: i + 1, text: protocol.steps[i]),
-            const SizedBox(height: 8),
-            Text('Quality tips', style: textTheme.labelLarge),
-            const SizedBox(height: 4),
-            for (final String tip in protocol.qualityTips)
-              _ProtocolLine(text: tip),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('Capture setup', style: GoogleFonts.poppins(
+            fontSize: 15, fontWeight: FontWeight.w600, color: const Color(0xFF202020),
+          )),
+          const SizedBox(height: 8),
+          Text(protocol.preparation, style: GoogleFonts.inter(
+            fontSize: 13, color: const Color(0xFF202020).withOpacity(0.6), height: 1.4,
+          )),
+          const SizedBox(height: 12),
+          Text('Steps', style: GoogleFonts.inter(
+            fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFFA11F2B),
+          )),
+          const SizedBox(height: 4),
+          for (int i = 0; i < protocol.steps.length; i++)
+            _ProtocolLine(index: i + 1, text: protocol.steps[i]),
+          const SizedBox(height: 8),
+          Text('Quality tips', style: GoogleFonts.inter(
+            fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFFA11F2B),
+          )),
+          const SizedBox(height: 4),
+          for (final String tip in protocol.qualityTips)
+            _ProtocolLine(text: tip),
+        ],
       ),
     );
   }
@@ -567,12 +709,31 @@ class _ProtocolLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final int? value = index;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          SizedBox(width: 24, child: Text(value == null ? '–' : '$value.')),
-          Expanded(child: Text(text)),
+          SizedBox(
+            width: 24,
+            child: Text(
+              value == null ? '–' : '$value.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF202020).withOpacity(0.5),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: const Color(0xFF202020).withOpacity(0.6),
+                height: 1.4,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -594,42 +755,69 @@ class _LastReadingCardState extends State<_LastReadingCard> {
   @override
   Widget build(BuildContext context) {
     final BiometricMeasurement? measurement = widget.measurement;
-    return Card(
-      child: InkWell(
-        onTap: measurement == null
-            ? null
-            : () => setState(() => _expanded = !_expanded),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: measurement == null
-              ? const Text('No readings yet.')
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            _primaryText(measurement),
-                            style: Theme.of(context).textTheme.headlineSmall,
+    return GestureDetector(
+      onTap: measurement == null
+          ? null
+          : () => setState(() => _expanded = !_expanded),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: measurement == null
+            ? Text('No readings yet.', style: GoogleFonts.inter(
+                color: const Color(0xFF202020).withOpacity(0.5), fontSize: 13,
+              ))
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          _primaryText(measurement),
+                          style: GoogleFonts.poppins(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF202020),
                           ),
                         ),
-                        _StatusBadge(status: measurement.status),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(_capturedText(measurement.capturedAt)),
-                    if (_expanded) ...<Widget>[
-                      const SizedBox(height: 12),
-                      SelectableText(
-                        const JsonEncoder.withIndent(
-                          '  ',
-                        ).convert(measurement.toLLMRecord()),
                       ),
+                      _StatusBadge(status: measurement.status),
                     ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _capturedText(measurement.capturedAt),
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: const Color(0xFF202020).withOpacity(0.45),
+                    ),
+                  ),
+                  if (_expanded) ...<Widget>[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5EFE6),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: SelectableText(
+                        const JsonEncoder.withIndent('  ').convert(measurement.toLLMRecord()),
+                        style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF202020).withOpacity(0.6)),
+                      ),
+                    ),
                   ],
-                ),
-        ),
+                ],
+              ),
       ),
     );
   }
@@ -643,17 +831,61 @@ class _CaptureProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        SizedBox(
-          width: 56,
-          height: 56,
-          child: CircularProgressIndicator(value: progress),
-        ),
-        const SizedBox(width: 16),
-        Expanded(child: Text('${(progress * 100).round()}%')),
-        TextButton(onPressed: onCancel, child: const Text('Cancel')),
-      ],
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+              value: progress,
+              color: const Color(0xFFA11F2B),
+              backgroundColor: const Color(0xFFD9D0C7),
+              strokeWidth: 4,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              '${(progress * 100).round()}% captured',
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF202020),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: onCancel,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFA11F2B).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFFA11F2B),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -663,10 +895,24 @@ class _UnsupportedNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('Not supported on this device.'),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFD9D0C7),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: const Color(0xFF202020).withOpacity(0.5)),
+          const SizedBox(width: 12),
+          Text(
+            'Not supported on this device.',
+            style: GoogleFonts.inter(
+              color: const Color(0xFF202020).withOpacity(0.6),
+              fontSize: 13,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -679,12 +925,47 @@ class _HistoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(_iconFor(measurement.status)),
-      title: Text(_primaryText(measurement)),
-      subtitle: Text(_capturedText(measurement.capturedAt)),
-      trailing: Text(measurement.status.name),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(_iconFor(measurement.status),
+              size: 20,
+              color: measurement.status == MeasurementStatus.ok
+                  ? const Color(0xFF34C759)
+                  : Colors.orange.shade600),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _primaryText(measurement),
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: const Color(0xFF202020),
+              ),
+            ),
+          ),
+          Text(
+            _capturedText(measurement.capturedAt),
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: const Color(0xFF202020).withOpacity(0.4),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -696,7 +977,24 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Chip(label: Text(status.name));
+    final bool isOk = status == MeasurementStatus.ok;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isOk
+            ? const Color(0xFF34C759).withOpacity(0.1)
+            : Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        status.name,
+        style: GoogleFonts.inter(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: isOk ? const Color(0xFF34C759) : Colors.orange.shade700,
+        ),
+      ),
+    );
   }
 }
 

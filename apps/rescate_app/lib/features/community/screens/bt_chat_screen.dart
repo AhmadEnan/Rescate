@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:offline_data/offline_data.dart';
+import 'package:biometric_estimators/biometric_estimators.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
 import 'package:bluetooth_mesh/bluetooth_mesh.dart';
@@ -64,6 +66,42 @@ class _BtChatScreenState extends State<BtChatScreen> {
         );
       }
     });
+  }
+
+  Future<void> _shareVitals() async {
+    try {
+      final store = await MeasurementStore.open();
+      final recent = await store.recentAll(limit: 5);
+      await store.close();
+      if (recent.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('No vitals to share. Run a test first.'),
+              backgroundColor: Colors.orange.shade700,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      final buf = StringBuffer('📊 My Recent Vitals:\n');
+      for (final m in recent) {
+        final val = m.primary?.value.toStringAsFixed(1) ?? '--';
+        final unit = m.primary?.unit ?? '';
+        buf.writeln('• ${m.displayName}: $val $unit');
+      }
+      final text = buf.toString().trim();
+      if (!_isConnected) return;
+      _nearby.sendMessage(widget.endpointId, text);
+      setState(() => _messages.add(BtChatMessage(text: text, isSent: true)));
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('Share vitals failed: $e');
+    }
   }
 
   @override
@@ -328,7 +366,29 @@ class _BtChatScreenState extends State<BtChatScreen> {
                 enabled: _isConnected,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
+            // Share vitals button
+            GestureDetector(
+              onTap: _isConnected ? _shareVitals : null,
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _isConnected
+                      ? AppColors.primaryRed.withOpacity(0.1)
+                      : AppColors.cardBackgroundLight.withOpacity(0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  LucideIcons.heartPulse,
+                  color: _isConnected
+                      ? AppColors.primaryRed
+                      : AppColors.cardBackgroundLight,
+                  size: 18,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
             GestureDetector(
               onTap: _sendMessage,
               child: Container(

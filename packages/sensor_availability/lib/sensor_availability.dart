@@ -10,7 +10,7 @@ export 'src/biometric_id.dart';
 export 'src/biometric_report.dart';
 export 'src/biometric_resolver.dart' show resolveBiometrics;
 export 'src/sensor_availability_service.dart';
-export 'src/sensor_catalog.dart' show sensorCatalog;
+export 'src/sensor_catalog.dart' show sensorCatalog, descriptorFor;
 export 'src/sensor_descriptor.dart';
 export 'src/sensor_id.dart';
 export 'src/sensor_report.dart';
