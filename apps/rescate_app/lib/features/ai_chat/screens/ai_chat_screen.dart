@@ -14,6 +14,8 @@ import '../../home/widgets/top_bar.dart';
 import '../state/llm_state.dart';
 import 'chat_history_screen.dart';
 import 'model_setup_screen.dart';
+import 'voice_chat_screen.dart';
+import '../../../core/providers/demo_state.dart';
 
 class AiChatScreen extends StatefulWidget {
   const AiChatScreen({super.key});
@@ -133,6 +135,42 @@ class _AiChatScreenState extends State<AiChatScreen>
     );
   }
 
+  void _openVoiceChat() {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 400),
+        pageBuilder: (_, __, ___) => const VoiceChatScreen(),
+        transitionsBuilder: (_, anim, __, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+            child: child,
+          );
+        },
+      ),
+    );
+  }
+
+  void _attachVitals(bool isArabic) {
+    final demo = DemoState.instance;
+    if (demo.isDemoMode && demo.readings.isEmpty) {
+      demo.generateMockReadings();
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _VitalsPickerSheet(
+        onAttach: (text) {
+          _controller.text = text;
+          _controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: _controller.text.length),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _newChat() async {
     await _llmState.startNewConversation();
   }
@@ -170,10 +208,15 @@ class _AiChatScreenState extends State<AiChatScreen>
               _ModelStatusBanner(
                 onSetupTap: _openModelSetup,
                 llmState: _llmState,
+                onToggleDemo: () {
+                  DemoState.instance.toggle();
+                  setState(() {});
+                },
               ),
               _ChatToolbar(
                 onNewChat: _newChat,
                 onHistory: _openHistory,
+                onVoiceChat: _openVoiceChat,
                 title: _llmState.conversations.isEmpty
                     ? 'New chat'
                     : _llmState.activeConversation.title,
@@ -197,7 +240,14 @@ class _AiChatScreenState extends State<AiChatScreen>
     final messages = _llmState.messages;
 
     if (messages.isEmpty) {
-      return _EmptyState(isArabic: isArabic, onSetupTap: _openModelSetup);
+      return _EmptyState(
+        isArabic: isArabic,
+        onSetupTap: _openModelSetup,
+        onSuggestionTap: (text) {
+          _controller.text = text;
+          _sendMessage(isArabic);
+        },
+      );
     }
 
     return ListView.builder(
@@ -220,10 +270,12 @@ class _AiChatScreenState extends State<AiChatScreen>
   // ── Input bar ──────────────────────────────────────────────────────────────
 
   Widget _buildInputBar(bool isArabic) {
-    final canSend = _llmState.isModelReady && !_llmState.isGenerating;
+    final canSend = _llmState.canChat && !_llmState.isGenerating;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final bottomPadding = keyboardHeight > 0 ? 12.0 : 110.0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
+      padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPadding),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -400,6 +452,28 @@ class _AiChatScreenState extends State<AiChatScreen>
               ),
               const SizedBox(width: 8),
 
+              // ── Vitals attach button ────────────────────────────────
+              GestureDetector(
+                onTap: canSend ? () => _attachVitals(isArabic) : null,
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: canSend
+                        ? AppColors.primaryRed.withOpacity(0.1)
+                        : AppColors.cardBackground.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    LucideIcons.heartPulse,
+                    color: canSend
+                        ? AppColors.primaryRed
+                        : AppColors.textDark.withOpacity(0.3),
+                    size: 18,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               // ── Send button ────────────────────────────────────────────
               GestureDetector(
                 onTap: canSend ? () => _sendMessage(isArabic) : null,
@@ -437,6 +511,7 @@ class _ChatToolbar extends StatelessWidget {
   const _ChatToolbar({
     required this.onNewChat,
     required this.onHistory,
+    required this.onVoiceChat,
     required this.title,
     required this.ttsEnabled,
     required this.isSpeaking,
@@ -446,6 +521,7 @@ class _ChatToolbar extends StatelessWidget {
 
   final VoidCallback onNewChat;
   final VoidCallback onHistory;
+  final VoidCallback onVoiceChat;
   final String title;
   final bool ttsEnabled;
   final bool isSpeaking;
@@ -520,6 +596,9 @@ class _ChatToolbar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 4),
+          // Voice chat button
+          _toolbarButton(LucideIcons.headphones, 'Voice chat', onVoiceChat),
+          const SizedBox(width: 4),
           _toolbarButton(LucideIcons.plus, 'New chat', onNewChat),
           const SizedBox(width: 4),
           _toolbarButton(LucideIcons.history, 'History', onHistory),
@@ -553,14 +632,73 @@ class _ModelStatusBanner extends StatelessWidget {
   const _ModelStatusBanner({
     required this.onSetupTap,
     required this.llmState,
+    required this.onToggleDemo,
   });
 
   final VoidCallback onSetupTap;
   final LlmState llmState;
+  final VoidCallback onToggleDemo;
 
   @override
   Widget build(BuildContext context) {
     final status = llmState.modelStatus;
+    final isDemo = DemoState.instance.isDemoMode;
+
+    // Demo mode banner
+    if (isDemo && status != LlmStatus.ready) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF34C759).withOpacity(0.12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF34C759).withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF34C759),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Demo Mode — no model needed',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: AppColors.textDark.withOpacity(0.7),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: onToggleDemo,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'OFF',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryRed,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     // Hide banner when model is ready and generating (or idle after ready).
     if (status == LlmStatus.ready || status == LlmStatus.generating) {
@@ -714,10 +852,15 @@ class _ModelStatusBanner extends StatelessWidget {
 // ── Empty state ────────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.isArabic, required this.onSetupTap});
+  const _EmptyState({
+    required this.isArabic,
+    required this.onSetupTap,
+    required this.onSuggestionTap,
+  });
 
   final bool isArabic;
   final VoidCallback onSetupTap;
+  final ValueChanged<String> onSuggestionTap;
 
   static const _suggestions = [
     'What are signs of a heart attack?',
@@ -831,28 +974,31 @@ class _EmptyState extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: chips.asMap().entries.map((e) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: AppColors.primaryRed.withOpacity(0.12),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.02),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+                return GestureDetector(
+                  onTap: () => onSuggestionTap(e.value),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: AppColors.primaryRed.withOpacity(0.12),
                       ),
-                    ],
-                  ),
-                  child: Text(
-                    e.value,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: AppColors.textDark.withOpacity(0.65),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.02),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      e.value,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: AppColors.textDark.withOpacity(0.65),
+                      ),
                     ),
                   ),
                 )
@@ -1114,3 +1260,226 @@ class _BubbleTail extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+// ── Vitals picker bottom sheet ────────────────────────────────────────────────
+
+class _VitalsPickerSheet extends StatefulWidget {
+  const _VitalsPickerSheet({required this.onAttach});
+  final ValueChanged<String> onAttach;
+
+  @override
+  State<_VitalsPickerSheet> createState() => _VitalsPickerSheetState();
+}
+
+class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
+  final Set<int> _selected = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final demo = DemoState.instance;
+    final readings = demo.readings;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.55,
+      ),
+      decoration: const BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.textDark.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.heartPulse,
+                    size: 20, color: AppColors.primaryRed),
+                const SizedBox(width: 10),
+                Text(
+                  'Attach Vitals',
+                  style: GoogleFonts.poppins(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const Spacer(),
+                if (readings.isEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      demo.generateMockReadings();
+                      setState(() {});
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryRed.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        'Generate Mock',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryRed,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (readings.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Text(
+                'No vitals available.\nGenerate mock data or run a test from the Vitals tab.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: AppColors.textDark.withOpacity(0.45),
+                ),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: readings.length,
+                itemBuilder: (_, i) {
+                  final r = readings[i];
+                  final isChosen = _selected.contains(i);
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      isChosen ? _selected.remove(i) : _selected.add(i);
+                    }),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isChosen
+                            ? AppColors.primaryRed.withOpacity(0.08)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isChosen
+                              ? AppColors.primaryRed.withOpacity(0.4)
+                              : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isChosen
+                                  ? AppColors.primaryRed
+                                  : AppColors.cardBackground,
+                            ),
+                            child: isChosen
+                                ? const Icon(LucideIcons.check,
+                                    size: 14, color: Colors.white)
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(r.name,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textDark,
+                                    )),
+                                Text(r.category,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      color:
+                                          AppColors.textDark.withOpacity(0.4),
+                                    )),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '${r.formattedValue} ${r.unit}',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          if (readings.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              child: GestureDetector(
+                onTap: () {
+                  final subset = _selected.isEmpty
+                      ? readings
+                      : _selected.map((i) => readings[i]).toList();
+                  final text = demo.formatReadingsForChat(subset);
+                  widget.onAttach(text);
+                  Navigator.of(context).pop();
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryRed,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primaryRed.withOpacity(0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      _selected.isEmpty
+                          ? 'Attach All Vitals'
+                          : 'Attach ${_selected.length} Reading${_selected.length > 1 ? "s" : ""}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

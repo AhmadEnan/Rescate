@@ -36,25 +36,47 @@ class MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final isKeyboardOpen = keyboardHeight > 0;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: KeyedSubtree(
-          key: ValueKey(_currentIndex),
-          child: IndexedStack(
-            index: _currentIndex,
-            children: _screens,
-          ),
-        ),
+      body: Stack(
+        children: List.generate(_screens.length, (index) {
+          final isMapOrAi = index == 1 || index == 2;
+          
+          if (isMapOrAi) {
+            return Offstage(
+              offstage: _currentIndex != index,
+              child: _screens[index],
+            );
+          }
+
+          return AnimatedSlide(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+            offset: _currentIndex == index
+                ? Offset.zero
+                : Offset(0, 1.2), // Slide up from bottom
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeIn,
+              opacity: _currentIndex == index ? 1.0 : 0.0,
+              child: IgnorePointer(
+                ignoring: _currentIndex != index,
+                child: _screens[index],
+              ),
+            ),
+          );
+        }),
       ),
-      bottomNavigationBar: SizedBox(
-        height: 100,
-        child: Stack(
-          alignment: Alignment.bottomCenter,
+      bottomNavigationBar: isKeyboardOpen
+          ? const SizedBox.shrink()
+          : SizedBox(
+              height: 100,
+              child: Stack(
+                alignment: Alignment.bottomCenter,
           clipBehavior: Clip.none,
           children: [
             // Background strip

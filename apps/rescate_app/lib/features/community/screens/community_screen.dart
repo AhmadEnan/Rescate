@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
+import '../../../core/providers/demo_state.dart';
 import '../../home/widgets/top_bar.dart';
 import 'package:bluetooth_mesh/bluetooth_mesh.dart';
 import 'bt_chat_screen.dart';
@@ -117,6 +118,10 @@ class _CommunityScreenState extends State<CommunityScreen>
       await _nearby.startDiscovery();
     }
     setState(() => _isActive = !_isActive);
+    // Auto-generate mock vitals for demo
+    if (_isActive && DemoState.instance.isDemoMode && DemoState.instance.readings.isEmpty) {
+      DemoState.instance.generateMockReadings();
+    }
   }
 
   void _handleConnectionChanged(
@@ -140,7 +145,10 @@ class _CommunityScreenState extends State<CommunityScreen>
   }
 
   void _connectAndChat(String endpointId, String name) async {
-    await _nearby.requestConnection(endpointId);
+    // In demo mode skip the real connection request
+    if (!DemoState.instance.isDemoMode) {
+      await _nearby.requestConnection(endpointId);
+    }
     if (!mounted) return;
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -193,7 +201,16 @@ class _CommunityScreenState extends State<CommunityScreen>
   @override
   Widget build(BuildContext context) {
     final isArabic = AppStateProvider.of(context).isArabic;
-    final discovered = _nearby.discoveredDevices;
+    final isDemo = DemoState.instance.isDemoMode;
+    // In demo mode, show fake discovered doctors
+    final discovered = isDemo && _isActive
+        ? <String, String>{
+            'demo_doc_1': 'Dr. Sarah Ahmed',
+            'demo_doc_2': 'Dr. Omar Khalil',
+            'demo_doc_3': 'Dr. Lina Mansour',
+            ...(_nearby.discoveredDevices),
+          }
+        : _nearby.discoveredDevices;
     final connected = _nearby.connectedDevices;
 
     return Container(
