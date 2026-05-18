@@ -972,15 +972,35 @@ class _StreamingTextState extends State<_StreamingText>
   }
 }
 
-class _ChatBubble extends StatelessWidget {
+class _ChatBubble extends StatefulWidget {
   const _ChatBubble({required this.message});
 
   final ChatMessage message;
 
   @override
+  State<_ChatBubble> createState() => _ChatBubbleState();
+}
+
+class _ChatBubbleState extends State<_ChatBubble> {
+  /// Manual override for the thoughts disclosure. `null` means "follow the
+  /// auto rule" (expanded while thinking, collapsed once the answer starts).
+  /// Once the user taps the toggle this gets pinned to `true` or `false`.
+  bool? _thoughtsManualExpanded;
+
+  bool _resolveExpanded(ChatMessage m) {
+    if (_thoughtsManualExpanded != null) return _thoughtsManualExpanded!;
+    return m.isThinking;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
     final isUser = message.isUser;
     final textColor = isUser ? Colors.white : AppColors.textDark;
+    final hasThoughts = !isUser && message.thoughts.isNotEmpty;
+    final showAnswerStreaming =
+        !isUser && message.isStreaming && !message.isThinking;
+    final showAnswerEmpty = message.text.isEmpty && !message.isThinking;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1025,16 +1045,28 @@ class _ChatBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (message.text.isEmpty && message.isStreaming)
+              if (hasThoughts || message.isThinking) ...[
+                _ThoughtsDisclosure(
+                  thoughts: message.thoughts,
+                  isThinking: message.isThinking,
+                  expanded: _resolveExpanded(message),
+                  baseColor: textColor,
+                  onToggle: () => setState(() {
+                    _thoughtsManualExpanded = !_resolveExpanded(message);
+                  }),
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (showAnswerEmpty && message.isStreaming)
                 _TypingIndicator(color: textColor)
-              else if (!isUser && message.isStreaming) ...[
+              else if (showAnswerStreaming) ...[
                 _StreamingText(
                   text: message.text.replaceAll(RegExp(r'\n\n\[SYSTEM_VITALS_CONTEXT:.*?\]'), ''),
                   style: GoogleFonts.inter(fontSize: 14, color: textColor, height: 1.5),
                 ),
                 const SizedBox(height: 6),
                 _TypingIndicator(color: textColor),
-              ] else
+              ] else if (message.text.isNotEmpty)
                 Text(
                   message.text.replaceAll(RegExp(r'\n\n\[SYSTEM_VITALS_CONTEXT:.*?\]'), ''),
                   style: GoogleFonts.inter(fontSize: 14, color: textColor, height: 1.5),
@@ -1052,6 +1084,88 @@ class _ChatBubble extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ThoughtsDisclosure extends StatelessWidget {
+  const _ThoughtsDisclosure({
+    required this.thoughts,
+    required this.isThinking,
+    required this.expanded,
+    required this.baseColor,
+    required this.onToggle,
+  });
+
+  final String thoughts;
+  final bool isThinking;
+  final bool expanded;
+  final Color baseColor;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = baseColor.withValues(alpha: 0.6);
+    final label = isThinking ? 'Thinking…' : 'Thoughts';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: onToggle,
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  expanded ? LucideIcons.chevronDown : LucideIcons.chevronRight,
+                  size: 12,
+                  color: muted,
+                ),
+                const SizedBox(width: 4),
+                Icon(LucideIcons.brain, size: 12, color: muted),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: muted,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          firstChild: const SizedBox(width: double.infinity),
+          secondChild: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: baseColor.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: baseColor.withValues(alpha: 0.08)),
+            ),
+            child: Text(
+              thoughts.isEmpty ? '…' : thoughts,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: baseColor.withValues(alpha: 0.75),
+                height: 1.4,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+          crossFadeState:
+              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 180),
         ),
       ],
     );

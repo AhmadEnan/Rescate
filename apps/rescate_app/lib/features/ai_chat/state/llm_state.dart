@@ -16,14 +16,23 @@ class ChatMessage {
   ChatMessage({
     required this.text,
     required this.isUser,
+    this.thoughts = '',
     this.isStreaming = false,
+    this.isThinking = false,
     this.ttftMs,
     this.totalMs,
   });
 
   String text;
+  /// Model's chain-of-thought emitted inside `<|channel>thought…<channel|>`.
+  /// Shown in a collapsible section of the bubble; NEVER injected back into
+  /// the LLM prompt on subsequent turns.
+  String thoughts;
   final bool isUser;
   bool isStreaming;
+  /// True while the model is still streaming thought tokens (answer hasn't
+  /// started). Used by the UI to keep the thoughts disclosure auto-expanded.
+  bool isThinking;
   /// Time-to-first-token in ms. Set only for AI messages, after the first token arrives.
   int? ttftMs;
   /// Total wall-clock time from sendMessage to stream-done in ms. AI messages only.
@@ -32,6 +41,7 @@ class ChatMessage {
   Map<String, dynamic> toJson() => {
         'text': text,
         'isUser': isUser,
+        if (thoughts.isNotEmpty) 'thoughts': thoughts,
         if (ttftMs != null) 'ttftMs': ttftMs,
         if (totalMs != null) 'totalMs': totalMs,
       };
@@ -39,6 +49,7 @@ class ChatMessage {
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
         text: json['text'] as String? ?? '',
         isUser: json['isUser'] as bool? ?? false,
+        thoughts: json['thoughts'] as String? ?? '',
         ttftMs: json['ttftMs'] as int?,
         totalMs: json['totalMs'] as int?,
       );
@@ -92,7 +103,7 @@ class LlmState extends ChangeNotifier {
   final List<Conversation> conversations = [];
   Conversation? _active;
   bool _restored = false;
-  StreamSubscription<String>? _streamSubscription;
+  StreamSubscription<LlmToken>? _streamSubscription;
 
   // ── Forwarded LlmService state ─────────────────────────────────────────────
 
@@ -184,6 +195,27 @@ class LlmState extends ChangeNotifier {
         debugPrint('[LlmState] tryAutoLoadModel: file missing: $path');
         return;
       }
+
+      // Crash-loop guard: if the previous attempt for this model already
+      // walked every fallback rung, refuse to auto-retry. The user reaches
+      // the model-setup screen which surfaces the diagnostic banner and the
+      // Safe-mode toggle.
+      final LoadAttempt? previous = await LlmLoadDiagnostics.readAttempt();
+      if (previous != null && previous.modelPath == path) {
+        // The number of rungs is fixed at 5; if the marker is at or past the
+        // last index there is nothing left for loadModel to try.
+        if (previous.nextRungAfterCrash >= 5) {
+          debugPrint(
+            '[LlmState] tryAutoLoadModel: previous attempt exhausted ladder — '
+            'skipping auto-load. ($previous)',
+          );
+          return;
+        }
+        debugPrint(
+          '[LlmState] tryAutoLoadModel: resuming after previous crash at $previous',
+        );
+      }
+
       // Pre-warm RAG chunks in parallel (idempotent — safe to call multiple times).
       unawaited(LegacyRag.initialize());
       await Profiler.span(
@@ -208,7 +240,13 @@ class LlmState extends ChangeNotifier {
     }
     convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
 
-    final aiMessage = ChatMessage(text: '', isUser: false, isStreaming: true);
+    final aiMessage = ChatMessage(
+      text: '',
+      isUser: false,
+      isStreaming: true,
+      // Thinking is always enabled, so we expect a thought block first.
+      isThinking: true,
+    );
     convo.messages.add(aiMessage);
     notifyListeners();
     unawaited(_persist());
@@ -216,19 +254,28 @@ class LlmState extends ChangeNotifier {
     final sendSw = Stopwatch()..start();
     var firstToken = true;
     // Word-boundary buffer: collect raw tokens (often subword pieces) and only
-    // flush to the message text when a natural break appears, or after a small
-    // length cap. Makes streaming look like word-by-word typing instead of
-    // character-by-character jitter.
-    final tokenBuffer = StringBuffer();
+    // flush to the destination string when a natural break appears, or after
+    // a small length cap. Makes streaming look like word-by-word typing
+    // instead of character-by-character jitter. We keep one buffer per
+    // channel so a mid-token channel switch never bleeds across.
+    final answerBuffer = StringBuffer();
+    final thoughtBuffer = StringBuffer();
     const flushChars = <int>{
       0x20, 0x09, 0x0A, 0x0D, // space, tab, LF, CR
       0x2C, 0x2E, 0x3B, 0x3A, 0x21, 0x3F, // , . ; : ! ?
       0x060C, 0x061B, 0x061F, // Arabic comma, semicolon, question mark
     };
-    void flush() {
-      if (tokenBuffer.isEmpty) return;
-      aiMessage.text += tokenBuffer.toString();
-      tokenBuffer.clear();
+    void flushAnswer() {
+      if (answerBuffer.isEmpty) return;
+      aiMessage.text += answerBuffer.toString();
+      answerBuffer.clear();
+      convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
+      notifyListeners();
+    }
+    void flushThought() {
+      if (thoughtBuffer.isEmpty) return;
+      aiMessage.thoughts += thoughtBuffer.toString();
+      thoughtBuffer.clear();
       convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
       notifyListeners();
     }
@@ -237,7 +284,7 @@ class LlmState extends ChangeNotifier {
       final stream = LlmService.instance.generateStream(trimmed, isArabic: isArabic);
 
       _streamSubscription = stream.listen(
-        (token) {
+        (tok) {
           if (firstToken) {
             firstToken = false;
             final ttft = sendSw.elapsedMilliseconds;
@@ -247,27 +294,49 @@ class LlmState extends ChangeNotifier {
               data: <String, Object?>{'ms': ttft},
             );
           }
-          tokenBuffer.write(token);
-          final last = token.isNotEmpty ? token.codeUnitAt(token.length - 1) : 0;
-          if (flushChars.contains(last) || tokenBuffer.length >= 16) {
-            flush();
+          final text = tok.text;
+          if (text.isEmpty) return;
+          if (tok.channel == LlmChannel.thought) {
+            thoughtBuffer.write(text);
+            final last = text.codeUnitAt(text.length - 1);
+            if (flushChars.contains(last) || thoughtBuffer.length >= 16) {
+              flushThought();
+            }
+          } else {
+            // First answer token — the model is done thinking. Flush any
+            // pending thought fragment so the UI collapses cleanly, then
+            // route the rest of the stream to the answer.
+            if (aiMessage.isThinking) {
+              flushThought();
+              aiMessage.isThinking = false;
+              notifyListeners();
+            }
+            answerBuffer.write(text);
+            final last = text.codeUnitAt(text.length - 1);
+            if (flushChars.contains(last) || answerBuffer.length >= 16) {
+              flushAnswer();
+            }
           }
         },
         onDone: () {
-          flush();
+          flushThought();
+          flushAnswer();
           sendSw.stop();
           final total = sendSw.elapsedMilliseconds;
           aiMessage.totalMs = total;
           Profiler.recordSpan('chat.sendMessage', total);
           aiMessage.isStreaming = false;
+          aiMessage.isThinking = false;
           convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
           notifyListeners();
           unawaited(_persist());
         },
         onError: (Object e) {
-          flush();
+          flushThought();
+          flushAnswer();
           aiMessage.text = 'Error: ${e.toString()}';
           aiMessage.isStreaming = false;
+          aiMessage.isThinking = false;
           notifyListeners();
           unawaited(_persist());
         },
@@ -276,6 +345,7 @@ class LlmState extends ChangeNotifier {
     } catch (e) {
       aiMessage.text = 'Error: ${e.toString()}';
       aiMessage.isStreaming = false;
+      aiMessage.isThinking = false;
       notifyListeners();
       unawaited(_persist());
     }
@@ -293,10 +363,12 @@ class LlmState extends ChangeNotifier {
           ..clear()
           ..addAll(list.map((e) =>
               Conversation.fromJson(Map<String, dynamic>.from(e as Map))));
-        // Any message marked streaming on disk wasn't actually still streaming.
+        // Any message marked streaming/thinking on disk wasn't actually still
+        // active — the stream died with the process.
         for (final c in conversations) {
           for (final m in c.messages) {
             m.isStreaming = false;
+            m.isThinking = false;
           }
         }
       }
@@ -347,6 +419,7 @@ class LlmState extends ChangeNotifier {
     for (final c in conversations) {
       for (final m in c.messages) {
         if (m.isStreaming) m.isStreaming = false;
+        if (m.isThinking) m.isThinking = false;
       }
     }
   }
