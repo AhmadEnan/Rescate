@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/rescate_app/assets/logo.png" width="116" alt="Rescate logo" />
+  <img src="assets/rescate%20logo.png" width="92" alt="Rescate logo" />
 </p>
 
 <h1 align="center">Rescate</h1>
@@ -28,32 +28,32 @@
 <br>
 
 <!--
-  Brand image slots:
-  Replace these placeholders when final brand/product visuals are ready.
-  Recommended export paths:
+  Future brand slots:
+  The README currently uses the shipped assets/ visuals.
+  If the brand package changes, replace these with final exports:
   - docs/brand/hero.png
   - docs/brand/screens-ai-map-vitals.png
   - docs/brand/workspace-system.png
 -->
 
 <p align="center">
-  <img src="https://placehold.co/1600x720/E8E1D7/A11F2B/png?text=Rescate+hero+product+visual" alt="Rescate hero product visual placeholder" width="100%">
+  <img src="assets/rescate%20banner.png" alt="Rescate banner" width="100%">
 </p>
 
 <table>
   <tr>
     <td width="33%" align="center">
-      <img src="https://placehold.co/520x1040/F7F2EA/A11F2B/png?text=AI+Chat+Screen" alt="AI chat screen placeholder" width="100%">
+      <img src="assets/ai%20tab.jpg" alt="AI chat screen" width="100%">
       <br>
       <strong>On-device guidance</strong>
     </td>
     <td width="33%" align="center">
-      <img src="https://placehold.co/520x1040/E8E1D7/2D4A35/png?text=Offline+Map+Screen" alt="Offline map screen placeholder" width="100%">
+      <img src="assets/map%20tab.jpg" alt="Offline map screen" width="100%">
       <br>
       <strong>Offline coordination</strong>
     </td>
     <td width="33%" align="center">
-      <img src="https://placehold.co/520x1040/F7F2EA/811820/png?text=Vitals+Screen" alt="Vitals screen placeholder" width="100%">
+      <img src="assets/vitals%20tab.jpg" alt="Vitals screen" width="100%">
       <br>
       <strong>Rapid assessment</strong>
     </td>
@@ -61,6 +61,21 @@
 </table>
 
 <br>
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/learning%20tab.jpg" alt="Learning screen" width="100%">
+      <br>
+      <strong>First-aid learning</strong>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/bluetooth%20tab.jpg" alt="Nearby consultation screen" width="100%">
+      <br>
+      <strong>Nearby consultation</strong>
+    </td>
+  </tr>
+</table>
 
 ## Experience
 
@@ -82,13 +97,13 @@
 </table>
 
 <p align="center">
-  <img src="https://placehold.co/1400x360/E8E1D7/000000/png?text=Learn+%7C+Map+%7C+AI+Chat+%7C+Consult+%7C+Vitals" alt="Five-tab app flow placeholder" width="100%">
+  <img src="assets/Gemma-banner.original-2199172107.png" alt="Gemma visual banner" width="100%">
 </p>
 
 ## System
 
 <p align="center">
-  <img src="https://placehold.co/1400x520/F7F2EA/A11F2B/png?text=App+%2B+Packages+%2B+Offline+Runtime" alt="System architecture visual placeholder" width="100%">
+  <img src="assets/competition%20header.png" alt="Gemma 4 Good Hackathon header" width="360">
 </p>
 
 <table>
@@ -99,6 +114,10 @@
     <td width="25%"><strong>Secure by default</strong><br>Ephemeral Ed25519 identity, Curve25519, and encrypted storage boundaries.</td>
   </tr>
 </table>
+
+<p align="center">
+  <strong>Submitted to The Gemma 4 Good Hackathon.</strong>
+</p>
 
 ## Workspace
 
