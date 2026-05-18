@@ -13,6 +13,8 @@ import 'legacy_rag.dart';
 import 'llm_config.dart';
 import 'llm_load_diagnostics.dart';
 import 'llm_load_strategy.dart';
+import 'tools/tool_call.dart';
+import 'tools/tool_executor.dart';
 
 /// Which logical channel a streamed [LlmToken] belongs to.
 ///
@@ -77,6 +79,23 @@ class LlmService extends ChangeNotifier {
   LlmStatus _status = LlmStatus.idle;
   String? _lastError;
   String? _loadedModelPath;
+
+  /// Optional tool registry. When non-null, [generateStreamWithTools] declares
+  /// these tools to the model and dispatches any emitted tool_call via
+  /// [ToolRegistry.executor].
+  ToolRegistry? toolRegistry;
+
+  /// Maximum number of model → tool → model round-trips per user turn.
+  /// Guards against infinite tool-call loops.
+  static const int maxToolRoundTrips = 2;
+
+  /// Time budget for a single tool executor invocation.
+  static const Duration toolTimeout = Duration(seconds: 45);
+
+  /// Attach (or replace) the tool registry used by [generateStreamWithTools].
+  void attachToolRegistry(ToolRegistry registry) {
+    toolRegistry = registry;
+  }
 
   // ── Public getters ─────────────────────────────────────────────────────────
 
@@ -410,6 +429,213 @@ class LlmService extends ChangeNotifier {
       totalSw.stop();
       _profileRecordGenerateStream(totalSw.elapsedMilliseconds, rssStart);
       // Only reset to ready if we didn't hit an error.
+      if (_status == LlmStatus.generating) {
+        _setStatus(LlmStatus.ready);
+      }
+    }
+  }
+
+  /// Streams generated tokens for [userMessage] with tool calling enabled.
+  ///
+  /// Declares [toolRegistry]'s tools to the model in the system turn. If the
+  /// model emits a complete `<|tool_call>...<tool_call|>` block, we stop
+  /// consuming the stream, dispatch the call via [ToolRegistry.executor],
+  /// append the rendered `<|tool_response>...<tool_response|>` to the prompt,
+  /// and re-invoke generation. Hard-capped at [maxToolRoundTrips] round-trips.
+  ///
+  /// When [toolRegistry] is null this falls through to plain generation.
+  ///
+  /// The tool_call markup itself is suppressed from the emitted token stream
+  /// — only the prose before the call (and any prose after the response) is
+  /// visible to the consumer.
+  Stream<LlmToken> generateStreamWithTools(
+    String userMessage, {
+    bool isArabic = false,
+  }) async* {
+    if (!isReady || _engine == null) {
+      throw LlmNotReadyException();
+    }
+
+    final registry = toolRegistry;
+    if (registry == null) {
+      yield* generateStream(userMessage, isArabic: isArabic);
+      return;
+    }
+
+    _setStatus(LlmStatus.generating);
+
+    try {
+      final chunks = Profiler.spanSync(
+        'rag.search',
+        () => LegacyRag.search(userMessage, topK: 2),
+      );
+      Profiler.count('rag.chunks.searched', chunks.length);
+
+      var prompt = Profiler.spanSync(
+        'rag.buildPrompt',
+        () => LegacyRag.buildPrompt(
+          question: userMessage,
+          chunks: chunks,
+          toolDeclarations: registry.renderDeclarations(),
+        ),
+      );
+
+      const params = GenerationParams(
+        temp: LlmDefaults.temperature,
+        topP: LlmDefaults.topP,
+        topK: LlmDefaults.topK,
+        minP: LlmDefaults.minP,
+        penalty: LlmDefaults.repeatPenalty,
+        maxTokens: LlmDefaults.maxTokens,
+        reusePromptPrefix: true,
+      );
+
+      const opener = '<|channel>';
+      const closer = '<channel|>';
+      const callOpener = '<|tool_call>';
+      const callCloser = '<tool_call|>';
+      // Conservative hold-back: longest marker minus 1 so a marker straddling
+      // two tokens stays buffered until complete.
+      const maxMarkerTail = 12; // length of '<|tool_call>'
+
+      for (var round = 0; round < maxToolRoundTrips; round++) {
+        final stream = _engine!.generate(prompt, params: params);
+
+        var channel = LlmChannel.answer;
+        var buffer = '';
+        var emittedThisRound = '';
+        ToolCall? completedCall;
+
+        await for (final token in stream) {
+          emittedThisRound += token;
+          buffer += token;
+
+          var progressing = true;
+          while (progressing) {
+            progressing = false;
+
+            if (channel == LlmChannel.answer) {
+              // 1. Complete tool_call → break out and dispatch.
+              final tcStart = buffer.indexOf(callOpener);
+              final tcEnd = tcStart >= 0
+                  ? buffer.indexOf(callCloser, tcStart + callOpener.length)
+                  : -1;
+              if (tcStart >= 0 && tcEnd >= 0) {
+                if (tcStart > 0) {
+                  yield LlmToken(
+                      buffer.substring(0, tcStart), LlmChannel.answer);
+                }
+                final fullCallText =
+                    buffer.substring(tcStart, tcEnd + callCloser.length);
+                final parsed = ToolCallParser.parse(fullCallText);
+                if (parsed.isNotEmpty) {
+                  completedCall = parsed.first;
+                }
+                buffer = buffer.substring(tcEnd + callCloser.length);
+                break;
+              }
+
+              // 2. Channel switch into thought.
+              final idx = buffer.indexOf(opener);
+              if (idx >= 0) {
+                if (idx > 0) {
+                  yield LlmToken(
+                      buffer.substring(0, idx), LlmChannel.answer);
+                }
+                final afterOpener = idx + opener.length;
+                final nlIdx = buffer.indexOf('\n', afterOpener);
+                if (nlIdx < 0) {
+                  buffer = buffer.substring(idx);
+                  break;
+                }
+                buffer = buffer.substring(nlIdx + 1);
+                channel = LlmChannel.thought;
+                progressing = true;
+                continue;
+              }
+
+              // 3. No marker found yet — emit the safe prefix, hold back tail.
+              if (buffer.length > maxMarkerTail) {
+                final safeEnd = buffer.length - maxMarkerTail;
+                yield LlmToken(
+                    buffer.substring(0, safeEnd), LlmChannel.answer);
+                buffer = buffer.substring(safeEnd);
+              }
+            } else {
+              final idx = buffer.indexOf(closer);
+              if (idx >= 0) {
+                if (idx > 0) {
+                  yield LlmToken(
+                      buffer.substring(0, idx), LlmChannel.thought);
+                }
+                buffer = buffer.substring(idx + closer.length);
+                channel = LlmChannel.answer;
+                progressing = true;
+                continue;
+              }
+              if (buffer.length > maxMarkerTail) {
+                final safeEnd = buffer.length - maxMarkerTail;
+                yield LlmToken(
+                    buffer.substring(0, safeEnd), LlmChannel.thought);
+                buffer = buffer.substring(safeEnd);
+              }
+            }
+          }
+
+          if (completedCall != null) break;
+        }
+
+        // Stream ended (or we broke out for a tool call).
+        if (completedCall == null) {
+          if (buffer.isNotEmpty) {
+            // Strip any orphan tool_call markup the user shouldn't see.
+            final cleaned = ToolCallParser.stripMarkup(buffer);
+            if (cleaned.isNotEmpty) {
+              yield LlmToken(cleaned, channel);
+            }
+          }
+          return;
+        }
+
+        // Dispatch the tool call. The dispatcher decides its own timeout
+        // behavior; we wrap it in our own as a safety net.
+        Map<String, Object?> result;
+        try {
+          result = await registry.executor(completedCall).timeout(toolTimeout);
+        } on TimeoutException {
+          result = <String, Object?>{'error': 'timeout'};
+        } catch (e) {
+          result = <String, Object?>{'error': e.toString()};
+        }
+
+        final responseStr = ToolCallParser.renderResponse(
+          completedCall.name,
+          result,
+        );
+        Profiler.event(
+          'llm.tool_call',
+          data: <String, Object?>{
+            'name': completedCall.name,
+            'round': round,
+            'result_keys': result.keys.toList(growable: false),
+          },
+        );
+
+        // Build continuation prompt: everything emitted so far (which already
+        // includes the model's <|tool_call>...<tool_call|>) + our response.
+        prompt = prompt + emittedThisRound + responseStr;
+      }
+
+      // Round-trip cap exhausted.
+      Profiler.event(
+        'llm.tool_call.cap_exhausted',
+        data: <String, Object?>{'cap': maxToolRoundTrips},
+      );
+    } catch (e) {
+      _lastError = e.toString();
+      _setStatus(LlmStatus.error);
+      throw LlmException('Generation failed: $e');
+    } finally {
       if (_status == LlmStatus.generating) {
         _setStatus(LlmStatus.ready);
       }

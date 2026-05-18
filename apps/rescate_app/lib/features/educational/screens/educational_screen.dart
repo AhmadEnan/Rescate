@@ -594,6 +594,25 @@ class _LessonCard extends StatelessWidget {
   }
 }
 
+// ── Public entry: CPR lesson ────────────────────────────────────────────────
+//
+// Exposed so the AI-chat tool `show_cpr_tutorial` can navigate to it without
+// dragging the entire `_LessonDetailScreen` into public API.
+
+class CprLessonScreen extends StatelessWidget {
+  const CprLessonScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isArabic = AppStateProvider.of(context).isArabic;
+    return _LessonDetailScreen(
+      title: isArabic ? 'أساسيات الإنعاش' : 'CPR Basics',
+      icon: LucideIcons.heartPulse,
+      gradientColors: const [Color(0xFFCFC3B0), Color(0xFFD5CBBD)],
+    );
+  }
+}
+
 // ── Lesson Detail Screen ────────────────────────────────────────────────────────
 
 class _LessonDetailScreen extends StatefulWidget {

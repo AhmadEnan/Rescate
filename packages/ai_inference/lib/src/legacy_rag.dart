@@ -159,9 +159,23 @@ Always: natural prose, no bullets, no markdown, no headings. No greetings, no di
     return results;
   }
 
-  static String buildPrompt({required String question, required List<Map<String, dynamic>> chunks}) {
+  static const String _toolInstructionEn =
+      "\n\nTOOLS — You can call one of the declared tools when (and only when) it would meaningfully help. Emit exactly one <|tool_call>call:NAME{args}<tool_call|> block, then stop and wait for a <|tool_response>...<tool_response|>. Strings inside args MUST be wrapped in <|\"|>...<|\"|>. After the response arrives, continue the answer in normal prose.";
+  static const String _toolInstructionAr =
+      "\n\nالأدوات — يمكنك استدعاء إحدى الأدوات المُعلَنة عندما تساعدك فعلاً. أصدر كتلة واحدة فقط بصيغة <|tool_call>call:NAME{args}<tool_call|> ثم توقّف وانتظر <|tool_response>...<tool_response|>. لُفّ كل قيمة نصية بـ <|\"|>...<|\"|>. عند وصول الرد، تابع الإجابة بنثر طبيعي.";
+
+  static String buildPrompt({
+    required String question,
+    required List<Map<String, dynamic>> chunks,
+    String? toolDeclarations,
+  }) {
     final arabic = isArabic(question);
-    final systemPrompt = arabic ? systemPromptAr : systemPromptEn;
+    var systemPrompt = arabic ? systemPromptAr : systemPromptEn;
+    if (toolDeclarations != null && toolDeclarations.isNotEmpty) {
+      systemPrompt = '$systemPrompt'
+          '${arabic ? _toolInstructionAr : _toolInstructionEn}'
+          '\n\n$toolDeclarations';
+    }
 
     String context;
     if (chunks.isEmpty) {

@@ -11,9 +11,22 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/providers/demo_state.dart';
+import '../tools/tool_definitions.dart';
+import '../tools/tool_dispatcher.dart';
 
-const String _kPrefsConversationsKey = 'ai_chat.conversations.v1';
+const String _kPrefsConversationsKey = 'ai_chat.conversations.v2';
 const String _kPrefsActiveIdKey = 'ai_chat.active_conversation_id';
+
+/// Optional widget rendered below a chat bubble — emitted by tool calls that
+/// want to surface an action button (e.g. "Open CPR Tutorial").
+enum InlineWidgetType { none, cprTutorialButton }
+
+InlineWidgetType _inlineFromSignal(InlineWidgetSignal s) {
+  switch (s) {
+    case InlineWidgetSignal.cprTutorialButton:
+      return InlineWidgetType.cprTutorialButton;
+  }
+}
 
 class ChatMessage {
   ChatMessage({
@@ -24,6 +37,7 @@ class ChatMessage {
     this.isThinking = false,
     this.ttftMs,
     this.totalMs,
+    this.inlineWidget = InlineWidgetType.none,
   });
 
   String text;
@@ -40,6 +54,8 @@ class ChatMessage {
   int? ttftMs;
   /// Total wall-clock time from sendMessage to stream-done in ms. AI messages only.
   int? totalMs;
+  /// Optional action widget rendered below the bubble (e.g. CPR tutorial button).
+  InlineWidgetType inlineWidget;
 
   Map<String, dynamic> toJson() => {
         'text': text,
@@ -47,6 +63,8 @@ class ChatMessage {
         if (thoughts.isNotEmpty) 'thoughts': thoughts,
         if (ttftMs != null) 'ttftMs': ttftMs,
         if (totalMs != null) 'totalMs': totalMs,
+        if (inlineWidget != InlineWidgetType.none)
+          'inlineWidget': inlineWidget.name,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -55,6 +73,10 @@ class ChatMessage {
         thoughts: json['thoughts'] as String? ?? '',
         ttftMs: json['ttftMs'] as int?,
         totalMs: json['totalMs'] as int?,
+        inlineWidget: InlineWidgetType.values.firstWhere(
+          (e) => e.name == (json['inlineWidget'] as String?),
+          orElse: () => InlineWidgetType.none,
+        ),
       );
 }
 
@@ -107,6 +129,20 @@ class LlmState extends ChangeNotifier {
   Conversation? _active;
   bool _restored = false;
   StreamSubscription<LlmToken>? _streamSubscription;
+  RescateToolDispatcher? _toolDispatcher;
+
+  /// Wire the tool dispatcher and register tools with LlmService. Called once
+  /// at app bootstrap (from RescateApp.initState) when the MeasurementStore
+  /// future has resolved.
+  void attachToolDispatcher(RescateToolDispatcher dispatcher) {
+    _toolDispatcher = dispatcher;
+    LlmService.instance.attachToolRegistry(
+      ToolRegistry(
+        schemas: kRescateTools,
+        executor: dispatcher.dispatch,
+      ),
+    );
+  }
 
   // ── Forwarded LlmService state ─────────────────────────────────────────────
 
@@ -327,7 +363,14 @@ class LlmState extends ChangeNotifier {
 
     // ── Real model path ──────────────────────────────────────────────────
     try {
-      final stream = LlmService.instance.generateStream(trimmed, isArabic: isArabic);
+      final dispatcher = _toolDispatcher;
+      // Drain any leftover inline-widget signals from a previous turn so they
+      // don't bleed into this one.
+      dispatcher?.pendingInlineWidgets.clear();
+      final stream = dispatcher != null
+          ? LlmService.instance
+              .generateStreamWithTools(trimmed, isArabic: isArabic)
+          : LlmService.instance.generateStream(trimmed, isArabic: isArabic);
 
       _streamSubscription = stream.listen(
         (tok) {
@@ -367,6 +410,15 @@ class LlmState extends ChangeNotifier {
         onDone: () {
           flushThought();
           flushAnswer();
+          // Drain any inline-widget signals raised by tool executors this
+          // turn. We keep the first only — multiple signals in one turn are
+          // unexpected for MVP.
+          final pending = _toolDispatcher?.pendingInlineWidgets ??
+              const <PendingInlineWidget>[];
+          if (pending.isNotEmpty) {
+            aiMessage.inlineWidget = _inlineFromSignal(pending.first.type);
+            _toolDispatcher?.pendingInlineWidgets.clear();
+          }
           sendSw.stop();
           final total = sendSw.elapsedMilliseconds;
           aiMessage.totalMs = total;

@@ -10,6 +10,7 @@ import 'package:offline_data/offline_data.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
+import '../../educational/screens/educational_screen.dart';
 import '../../home/widgets/top_bar.dart';
 import '../state/llm_state.dart';
 import 'chat_history_screen.dart';
@@ -1228,10 +1229,48 @@ class _ChatBubbleState extends State<_ChatBubble> {
                   ),
                 ),
               ],
+              if (!isUser &&
+                  message.inlineWidget == InlineWidgetType.cprTutorialButton &&
+                  !message.isStreaming) ...[
+                const SizedBox(height: 10),
+                _InlineCprButton(),
+              ],
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _InlineCprButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: () {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const CprLessonScreen(),
+          ),
+        );
+      },
+      icon: const Icon(LucideIcons.heartPulse,
+          size: 16, color: AppColors.primaryRed),
+      label: Text(
+        'Open CPR Tutorial',
+        style: GoogleFonts.inter(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppColors.primaryRed,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: AppColors.primaryRed),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      ),
     );
   }
 }

@@ -39,6 +39,14 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // R8 minification needs explicit -dontwarn rules for JDK AWT /
+            // ImageIO classes pulled transitively by GraphHopper (via Apache
+            // XmlGraphics Commons). Those code paths are never executed on
+            // Android.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

@@ -15,8 +15,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/providers/app_state.dart';
 import 'features/ai_chat/state/llm_state.dart';
+import 'features/ai_chat/tools/tool_dispatcher.dart';
 import 'features/home/screens/main_screen.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
+
+/// Global navigator key — used by AI-chat tool executors that need to surface
+/// dialogs (e.g. biometric-capture consent) without a `BuildContext` of their
+/// own. Created here so it shares the lifetime of the MaterialApp.
+final GlobalKey<NavigatorState> rootNavKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   Profiler.markSessionStart();
@@ -146,6 +152,14 @@ class _RescateAppState extends State<RescateApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Wire AI-chat tool dispatcher once we have the MeasurementStore. Must
+    // happen before the first sendMessage so LlmService sees the registry.
+    LlmState.instance.attachToolDispatcher(
+      RescateToolDispatcher(
+        navKey: rootNavKey,
+        measurementStore: widget.measurementStore,
+      ),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(LlmState.instance.tryAutoLoadModel());
     });
@@ -172,6 +186,7 @@ class _RescateAppState extends State<RescateApp> with WidgetsBindingObserver {
       notifier: _appState,
       child: MaterialApp(
         title: 'Rescate',
+        navigatorKey: rootNavKey,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
           useMaterial3: true,

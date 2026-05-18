@@ -24,3 +24,6 @@ export 'src/llm_config.dart';
 export 'src/llm_load_diagnostics.dart';
 export 'src/llm_load_strategy.dart';
 export 'src/llm_service.dart';
+export 'src/tools/tool_call.dart';
+export 'src/tools/tool_executor.dart';
+export 'src/tools/tool_schema.dart';
