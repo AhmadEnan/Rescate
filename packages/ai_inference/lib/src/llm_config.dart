@@ -27,18 +27,17 @@ class LlmDefaults {
   /// used instead.
   static DeviceProfile? activeProfile;
 
-  /// Whether to use GPU acceleration (Vulkan) where possible.
-  /// If set to `false`, forces CPU inference which is highly stable across all devices.
-  static bool useGpu = true;
-
-  // Sampling defaults — kept as compile-time constants.
-  // 0.6 gives the model room to vary phrasing for casual or general questions
-  // while staying grounded enough for emergency instructions to remain stable.
-  static const double temperature = 0.6;
+  // Sampling defaults — sourced from Unsloth Studio tuning.
+  static const double temperature = 1.0;
   static const double topP = 0.95;
-  static const int topK = 40;
-  static const int maxTokens = 384;
-  static const double repeatPenalty = 1.1;
+  static const int topK = 64;
+  static const double minP = 0.0;
+  // Max Tokens = "Max" in Unsloth Studio → cap at the full context window.
+  static const int maxTokens = 131072;
+  // Repetition Penalty: Off (1.0 = no penalty).
+  static const double repeatPenalty = 1.0;
+  // Forced context length (Unsloth Studio "Context Length" slider).
+  static const int forcedContextSize = 131072;
 
   /// Builds a [ModelParams] using the [activeProfile] (or fallback).
   static ModelParams buildModelParams() {
@@ -52,36 +51,24 @@ class LlmDefaults {
       data: <String, Object?>{
         'resolved': gpuEnabled ? 'vulkan' : 'cpu',
         'threads': profile.recommendedThreads,
-        'ctx': profile.recommendedContextSize,
-        'gpuLayers': gpuLayers,
+        'ctx': forcedContextSize,
+        'gpuLayers': profile.recommendedGpuLayers,
       },
     );
 
     return ModelParams(
-      contextSize: profile.recommendedContextSize,
-      gpuLayers: gpuLayers,
-      preferredBackend: backend,
+      contextSize: forcedContextSize,
+      gpuLayers: profile.recommendedGpuLayers,
+      preferredBackend: GpuBackend.vulkan,
       numberOfThreads: profile.recommendedThreads,
       numberOfThreadsBatch: profile.recommendedBatchThreads,
       batchSize: profile.recommendedBatchSize,
       microBatchSize: profile.recommendedMicroBatchSize,
       useMmap: true,
       useMlock: !profile.isLowRam,
-      cacheTypeK: _kvCacheTypeFromString(profile.cacheTypeK),
-      cacheTypeV: _kvCacheTypeFromString(profile.cacheTypeV),
+      cacheTypeK: KvCacheType.f16,
+      cacheTypeV: KvCacheType.f16,
     );
-  }
-
-  static KvCacheType _kvCacheTypeFromString(String value) {
-    switch (value) {
-      case 'q8_0':
-        return KvCacheType.q8_0;
-      case 'q4_0':
-        return KvCacheType.q4_0;
-      case 'f16':
-      default:
-        return KvCacheType.f16;
-    }
   }
 }
 

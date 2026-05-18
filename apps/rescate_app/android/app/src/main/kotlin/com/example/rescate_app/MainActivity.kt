@@ -60,9 +60,21 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getInfo" -> handleDeviceProfile(result)
+                    "getFreeRam" -> handleFreeRam(result)
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun handleFreeRam(result: MethodChannel.Result) {
+        try {
+            val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val memInfo = ActivityManager.MemoryInfo()
+            activityManager.getMemoryInfo(memInfo)
+            result.success((memInfo.availMem / (1024L * 1024L)).toInt())
+        } catch (e: Throwable) {
+            result.error("FREE_RAM_ERROR", e.message, null)
+        }
     }
 
     private fun handleDeviceProfile(result: MethodChannel.Result) {

@@ -1,14 +1,40 @@
 // packages/ai_inference/lib/src/llm_service.dart
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
 
+import 'device_profile.dart';
 import 'legacy_rag.dart';
 import 'llm_config.dart';
+import 'llm_load_diagnostics.dart';
+import 'llm_load_strategy.dart';
+
+/// Which logical channel a streamed [LlmToken] belongs to.
+///
+/// Thinking-enabled Gemma 4 emits `<|channel>thought\n…<channel|>` *before*
+/// the visible answer. [LlmService.generateStream] parses these markers out of
+/// the raw token stream and tags each chunk with its channel so the UI can
+/// route them separately (a collapsible reasoning section vs. the bubble's
+/// answer text).
+enum LlmChannel {
+  /// Text inside `<|channel>thought\n…<channel|>` — the model's reasoning.
+  thought,
+
+  /// Everything outside the thought block — the user-visible answer.
+  answer,
+}
+
+/// A streamed text chunk plus the channel it belongs to.
+class LlmToken {
+  const LlmToken(this.text, this.channel);
+  final String text;
+  final LlmChannel channel;
+}
 
 /// Status of the [LlmService] model lifecycle.
 enum LlmStatus {
@@ -73,8 +99,12 @@ class LlmService extends ChangeNotifier {
 
   /// Loads the GGUF model at [modelPath].
   ///
-  /// Safe to call multiple times — will unload a previously loaded model first.
-  /// Throws [LlmException] if loading fails.
+  /// Walks a hardware fallback ladder ([buildFallbackLadder]) and persists
+  /// a sticky load-attempt marker before each native call so a SIGSEGV in
+  /// libllama / libggml does not crash-loop the user on next launch.
+  ///
+  /// Safe to call multiple times — will unload a previously loaded model
+  /// first. Throws [LlmException] if every rung fails.
   Future<void> loadModel(String modelPath) async {
     return Profiler.span('llm.loadModel', () async {
       if (_status == LlmStatus.generating) {
@@ -89,27 +119,135 @@ class LlmService extends ChangeNotifier {
       _setStatus(LlmStatus.loading);
       _lastError = null;
 
-      try {
-        _engine = LlamaEngine(LlamaBackend());
-        final params = LlmDefaults.buildModelParams();
+      await LlmLoadDiagnostics.appendLog('=== loadModel start path=$modelPath ===');
 
-        await Profiler.span(
-          'llm.engine.loadModel',
-          () => _engine!.loadModel(modelPath, modelParams: params),
-        );
-
-        // Load RAG chunks into memory if not already loaded.
-        await Profiler.span('rag.initialize', LegacyRag.initialize);
-
-        _loadedModelPath = modelPath;
-        _setStatus(LlmStatus.ready);
-        debugPrint('[LlmService] Model loaded: $modelPath');
-      } catch (e) {
-        _lastError = e.toString();
+      // 1. Preflight: bail early on missing / truncated / non-GGUF files.
+      final GgufFileCheck check = await LlmLoadDiagnostics.validateGgufFile(modelPath);
+      await LlmLoadDiagnostics.appendLog('preflight: $check');
+      if (!check.isValid) {
         _loadedModelPath = null;
         _setStatus(LlmStatus.error);
-        rethrow;
+        final String msg = check.error ?? 'unknown preflight error';
+        _lastError = 'Model file rejected: $msg';
+        throw LlmException(_lastError!);
       }
+
+      // 2. Build fallback ladder using the active device profile.
+      final DeviceProfile profile =
+          LlmDefaults.activeProfile ?? DeviceProfile.fallback;
+      final List<LlmLoadRung> ladder = buildFallbackLadder(profile);
+      await LlmLoadDiagnostics.appendLog(
+        'profile: ${_safeJson(profile.toJson())}',
+      );
+
+      // 3. Read the sticky marker. If it points at the same model, skip past
+      //    the last attempted rung — it crashed last time. If it points at a
+      //    different model, clear it (a different file has a different
+      //    memory profile and shouldn't be penalised).
+      final LoadAttempt? previous = await LlmLoadDiagnostics.readAttempt();
+      int startRung = 0;
+      if (previous != null) {
+        if (previous.modelPath == modelPath) {
+          startRung = previous.nextRungAfterCrash;
+          // GPU-collapse: if the prior attempt used a GPU backend and crashed,
+          // skip every remaining GPU rung. Observed on Mali-G57 / MT6789:
+          // rungs 0, 1, and 2 all SIGSEGV in the same Vulkan buffer-alloc
+          // path, so trying the rest of the GPU bucket only burns cold
+          // starts.
+          if (previous.crashedOnGpuBackend && startRung < safeModeRungIndex) {
+            await LlmLoadDiagnostics.appendLog(
+              'previous attempt crashed on GPU backend (${previous.backend}) '
+              '→ collapsing remaining GPU rungs, jumping to $safeModeRungIndex',
+            );
+            startRung = safeModeRungIndex;
+          }
+          await LlmLoadDiagnostics.appendLog(
+            'previous attempt detected: $previous → startRung=$startRung',
+          );
+        } else {
+          await LlmLoadDiagnostics.appendLog(
+            'previous attempt for different model — clearing: $previous',
+          );
+          await LlmLoadDiagnostics.clearAttempt();
+        }
+      }
+
+      if (startRung >= ladder.length) {
+        _loadedModelPath = null;
+        _setStatus(LlmStatus.error);
+        _lastError =
+            'This model has failed to load with every fallback configuration on this device. '
+            'Try a smaller quant (e.g. Q4_K_S) or a smaller model.';
+        await LlmLoadDiagnostics.appendLog('ladder exhausted before start; aborting');
+        throw LlmException(_lastError!);
+      }
+
+      // 4. If free RAM is clearly insufficient for any GPU rung, jump straight
+      //    to CPU (rung 3). We still want to log the attempt the GPU rung would
+      //    have used for diagnostics.
+      final int freeMb = await LlmLoadDiagnostics.readFreeRamMb();
+      final int requiredMb = (check.sizeBytes / (1024 * 1024) * 1.2).ceil();
+      await LlmLoadDiagnostics.appendLog(
+        'memory: freeRamMb=$freeMb requiredMb≈$requiredMb fileSizeMb=${(check.sizeBytes / 1048576).toStringAsFixed(1)}',
+      );
+      if (freeMb > 0 && freeMb < requiredMb && startRung < safeModeRungIndex) {
+        await LlmLoadDiagnostics.appendLog(
+          'free RAM below required threshold — jumping to rung $safeModeRungIndex',
+        );
+        startRung = safeModeRungIndex;
+      }
+
+      // 5. Walk the ladder.
+      Object? lastException;
+      for (int rung = startRung; rung < ladder.length; rung++) {
+        final LlmLoadRung step = ladder[rung];
+        await LlmLoadDiagnostics.appendLog(
+          'attempting rung=$rung ${step.description} '
+          '(${describeModelParams(step.params)})',
+        );
+
+        // Sticky marker BEFORE calling into FFI — survives a SIGSEGV.
+        await LlmLoadDiagnostics.writeAttempt(LoadAttempt(
+          rung: rung,
+          modelPath: modelPath,
+          timestampMs: DateTime.now().millisecondsSinceEpoch,
+          note: step.description,
+          backend: step.params.preferredBackend.name,
+        ));
+
+        try {
+          _engine = LlamaEngine(LlamaBackend());
+          await Profiler.span(
+            'llm.engine.loadModel',
+            () => _engine!.loadModel(modelPath, modelParams: step.params),
+          );
+
+          await Profiler.span('rag.initialize', LegacyRag.initialize);
+          await LlmLoadDiagnostics.clearAttempt();
+          await LlmLoadDiagnostics.appendLog('rung=$rung SUCCESS');
+
+          _loadedModelPath = modelPath;
+          _setStatus(LlmStatus.ready);
+          debugPrint('[LlmService] Model loaded (rung=$rung): $modelPath');
+          return;
+        } catch (e, st) {
+          lastException = e;
+          await LlmLoadDiagnostics.appendLog(
+            'rung=$rung FAILED ${e.runtimeType}: $e',
+          );
+          debugPrint('[LlmService] rung=$rung failed: $e\n$st');
+          await _unloadSilently();
+          // Try next rung.
+        }
+      }
+
+      // 6. All rungs exhausted in this session — keep the sticky marker so the
+      //    auto-load path on next launch refuses politely instead of retrying.
+      _loadedModelPath = null;
+      _setStatus(LlmStatus.error);
+      _lastError =
+          'Model failed to load on every fallback configuration. Last error: $lastException';
+      throw LlmException(_lastError!);
     });
   }
 
@@ -128,7 +266,7 @@ class LlmService extends ChangeNotifier {
   ///
   /// Throws [LlmNotReadyException] if no model is loaded.
   /// Throws [LlmException] on generation errors.
-  Stream<String> generateStream(
+  Stream<LlmToken> generateStream(
     String userMessage, {
     bool isArabic = false,
   }) async* {
@@ -169,6 +307,7 @@ class LlmService extends ChangeNotifier {
         temp: LlmDefaults.temperature,
         topP: LlmDefaults.topP,
         topK: LlmDefaults.topK,
+        minP: LlmDefaults.minP,
         penalty: LlmDefaults.repeatPenalty,
         maxTokens: LlmDefaults.maxTokens,
         reusePromptPrefix: true,
@@ -178,6 +317,21 @@ class LlmService extends ChangeNotifier {
         fullPrompt,
         params: params,
       );
+
+      // ── Channel splitter ───────────────────────────────────────────────────
+      // Tokens from llama.cpp may chop the literal markers `<|channel>` and
+      // `<channel|>` across boundaries, so we accumulate into a buffer and
+      // only emit the safe prefix (everything except the last N-1 chars, where
+      // N is the longest marker length). Drop markers + the `{name}\n` line
+      // that follows the opener so the visible payload stays clean.
+      const opener = '<|channel>';
+      const closer = '<channel|>';
+      const maxMarkerTail = (opener.length > closer.length
+              ? opener.length
+              : closer.length) -
+          1;
+      var channel = LlmChannel.answer;
+      var buffer = '';
 
       await for (final token in stream) {
         if (!firstTokenSeen) {
@@ -189,7 +343,63 @@ class LlmService extends ChangeNotifier {
           );
         }
         tokenCount++;
-        yield token;
+        buffer += token;
+
+        // Re-enter the state machine until no more transitions/emissions are
+        // possible for the current buffer.
+        var progressing = true;
+        while (progressing) {
+          progressing = false;
+          if (channel == LlmChannel.answer) {
+            final idx = buffer.indexOf(opener);
+            if (idx >= 0) {
+              if (idx > 0) {
+                yield LlmToken(
+                    buffer.substring(0, idx), LlmChannel.answer);
+              }
+              // After the opener we expect "{name}\n" before the thought
+              // content begins. Skip up to (and including) the newline.
+              final afterOpener = idx + opener.length;
+              final nlIdx = buffer.indexOf('\n', afterOpener);
+              if (nlIdx < 0) {
+                // The full header hasn't arrived; preserve opener + tail and
+                // wait for the next token.
+                buffer = buffer.substring(idx);
+                break;
+              }
+              buffer = buffer.substring(nlIdx + 1);
+              channel = LlmChannel.thought;
+              progressing = true;
+            } else if (buffer.length > maxMarkerTail) {
+              final safeEnd = buffer.length - maxMarkerTail;
+              yield LlmToken(buffer.substring(0, safeEnd), LlmChannel.answer);
+              buffer = buffer.substring(safeEnd);
+            }
+          } else {
+            final idx = buffer.indexOf(closer);
+            if (idx >= 0) {
+              if (idx > 0) {
+                yield LlmToken(
+                    buffer.substring(0, idx), LlmChannel.thought);
+              }
+              buffer = buffer.substring(idx + closer.length);
+              channel = LlmChannel.answer;
+              progressing = true;
+            } else if (buffer.length > maxMarkerTail) {
+              final safeEnd = buffer.length - maxMarkerTail;
+              yield LlmToken(
+                  buffer.substring(0, safeEnd), LlmChannel.thought);
+              buffer = buffer.substring(safeEnd);
+            }
+          }
+        }
+      }
+
+      // Flush any trailing buffered text on the current channel. If we were
+      // mid-thought when the stream ended (no closer arrived), the partial
+      // reasoning still belongs to the thought channel.
+      if (buffer.isNotEmpty) {
+        yield LlmToken(buffer, channel);
       }
       Profiler.count('llm.tokens', tokenCount);
     } catch (e) {
@@ -266,4 +476,12 @@ class LlmException implements Exception {
 class LlmNotReadyException extends LlmException {
   LlmNotReadyException()
       : super('No model is loaded. Call LlmService.instance.loadModel() first.');
+}
+
+String _safeJson(Object? value) {
+  try {
+    return jsonEncode(value);
+  } catch (_) {
+    return value.toString();
+  }
 }

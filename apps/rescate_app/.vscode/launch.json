@@ -1,0 +1,37 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Rescate (debug)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}",
+      "toolArgs": [
+        "--dart-define-from-file=${workspaceFolder}/dart_defines.json"
+      ]
+    },
+    {
+      "name": "Rescate (profile)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "profile",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}",
+      "toolArgs": [
+        "--dart-define-from-file=${workspaceFolder}/dart_defines.json"
+      ]
+    },
+    {
+      "name": "Rescate (release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}",
+      "toolArgs": [
+        "--dart-define-from-file=${workspaceFolder}/dart_defines.json"
+      ]
+    }
+  ]
+}

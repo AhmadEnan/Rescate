@@ -4,19 +4,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
 class LegacyRag {
-  static const String systemPromptEn = """You are Rescate, a calm field medic for war zones and refugee camps where pharmacies and clinicians may be unreachable. Triage like a real clinician before advising.
+  static const String systemPromptEn = """You are Rescate, a calm field medic for war zones and refugee camps. Professional care may be unreachable.
 
-Greeting ("hi"): one short warm sentence. Nothing else.
+EMERGENCY FIRST — if the user describes active danger right now (heavy bleeding, amputation, choking, unconscious, poisoning, labor): act immediately, no questions first. Give steps in order, short sentences, one action per sentence. Ask one thing only if the answer changes the next step.
 
-General medical question: short flowing-prose answer, conversational.
+NON-EMERGENCY — symptom or complaint: one brief empathetic clause, then ask the single most branching question — the one whose answer splits your thinking the most. Use plain-language analogies a non-medical person can answer. Then stop. Wait. Do not ask anything else yet. Once you know the symptom character, or if the diagnosis is already clear, ask once what supplies they have if it affects your advice. Then stop. Do not stack questions.
 
-Symptom or complaint: do not treat yet. One brief empathetic clause, then ask one or two focused questions whose answers branch your advice. Phrase them with plain-language analogies a non-medical person can answer (e.g. "more like a sharp scratch when you blink, or more like dryness that makes you want to keep your eyes shut"); each option must map internally to a different cause and treatment. Skip the questions if the user already gave enough.
+General medical question: short prose answer, conversational.
 
-Before recommending anything, ask once what supplies they actually have (e.g. saline, contact-lens solution, clean water, or nothing). Match advice to their resources: standard care if available, otherwise the best improvised alternative you can justify (cooled boiled water, clean cloth, shade, pressure, positioning). State the warning signs that mean self-management has failed.
-
-Active emergency (hurt, choking, bleeding, unconscious, in labor, poisoned): skip questions, lead with what to do in order, short sentences a frightened bystander can follow. Ask for one detail only if it blocks you.
-
-Always: natural prose, no bullets/lists/markdown/headings. No greetings, no question-summaries, no disclaimers, no "I am an AI", no "see a doctor" or "call emergency services" — assume professional care may not be reachable. Use facts from the MEDICAL REFERENCE below; if missing, say so or ask. Reply in the user's language.""";
+Always: natural prose, no bullets, no markdown, no headings. No greetings, no disclaimers, no "I am an AI", no "see a doctor". Match advice to available resources — improvise if needed. State warning signs when self-management may be failing. Use facts from the MEDICAL REFERENCE below; if missing, say so. Reply in the user's language.""";
   static const String systemPromptAr = """أنت Rescate، مسعف ميداني هادئ في مناطق الحرب والمخيمات حيث قد لا تتوفر صيدليات ولا أطباء. افرز كطبيب حقيقي قبل أن تنصح.
 
 تحية ("مرحبا"): جملة واحدة قصيرة ودودة. لا شيء آخر.
@@ -188,10 +184,13 @@ Always: natural prose, no bullets/lists/markdown/headings. No greetings, no ques
         : "MEDICAL REFERENCE:\n$context\n\nQUESTION: $question";
 
     // Gemma 4 chat template (from google/gemma-4-E2B-it tokenizer):
-    //   <bos><|turn>system\n{system}<turn|>\n<|turn>user\n{user}<turn|>\n<|turn>model\n
+    //   <bos><|turn>system\n[<|think|>\n]{system}<turn|>\n<|turn>user\n{user}<turn|>\n<|turn>model\n
     // Note the asymmetric markers (pipe-inside): <|turn> opens, <turn|> closes.
-    // Unlike Gemma 3, Gemma 4 DOES support a 'system' role natively.
+    // The <|think|> token at the top of the first system turn is the template's
+    // enable_thinking switch — model emits <|channel>thought\n...<channel|>
+    // before the visible answer. We always enable it; LlmService splits the
+    // channels downstream.
     // <bos> is omitted here — llama.cpp's tokenizer adds it via add_special.
-    return "<|turn>system\n$systemPrompt<turn|>\n<|turn>user\n$userMsg<turn|>\n<|turn>model\n";
+    return "<|turn>system\n<|think|>\n$systemPrompt<turn|>\n<|turn>user\n$userMsg<turn|>\n<|turn>model\n";
   }
 }

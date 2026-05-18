@@ -25,7 +25,9 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
   String? _pickedPath;
   String? _errorMessage;
   bool _isLoading = false;
-  bool _useGpu = LlmDefaults.useGpu;
+  bool _safeMode = false;
+  LoadAttempt? _previousAttempt;
+  String? _logFilePath;
 
   LlmStatus get _status => LlmService.instance.status;
 
@@ -34,7 +36,17 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
     super.initState();
     LlmService.instance.addListener(_onServiceChanged);
     _restoreLastPath();
-    _restoreGpuSetting();
+    _loadDiagnostics();
+  }
+
+  Future<void> _loadDiagnostics() async {
+    final previous = await LlmLoadDiagnostics.readAttempt();
+    final logPath = await LlmLoadDiagnostics.logFilePath();
+    if (!mounted) return;
+    setState(() {
+      _previousAttempt = previous;
+      _logFilePath = logPath;
+    });
   }
 
   @override
@@ -128,21 +140,44 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
     });
 
     try {
+      // Safe mode forces the loader to start at the CPU-only rung by
+      // pre-writing a sticky marker just past the GPU rungs. The loader
+      // reads this on entry and skips ahead.
+      if (_safeMode) {
+        await LlmLoadDiagnostics.writeAttempt(LoadAttempt(
+          rung: safeModeRungIndex - 1,
+          modelPath: path,
+          timestampMs: DateTime.now().millisecondsSinceEpoch,
+          note: 'user-selected safe mode',
+        ));
+      } else if (_previousAttempt != null &&
+          _previousAttempt!.modelPath != path) {
+        // Picking a different model voids the marker — different file,
+        // different memory profile.
+        await LlmLoadDiagnostics.clearAttempt();
+      }
+
       await LlmService.instance.loadModel(path);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kPrefsModelPathKey, path);
       // _onServiceChanged pops on success.
     } on LlmException catch (e) {
       if (!mounted) return;
+      final refreshed = await LlmLoadDiagnostics.readAttempt();
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = e.message;
+        _previousAttempt = refreshed;
       });
     } catch (e) {
+      if (!mounted) return;
+      final refreshed = await LlmLoadDiagnostics.readAttempt();
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = e.toString();
+        _previousAttempt = refreshed;
       });
     }
   }
@@ -272,68 +307,10 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // GPU Acceleration Toggle Card
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBackground,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: AppColors.cardBackgroundLight,
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            LucideIcons.zap,
-                            color: AppColors.primaryRed,
-                            size: 22,
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'GPU Acceleration (Vulkan)',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textDark,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Disable if model fails to load or the app crashes.',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    color: AppColors.textDark.withOpacity(0.5),
-                                    height: 1.3,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Switch(
-                            value: _useGpu,
-                            activeColor: AppColors.primaryRed,
-                            onChanged: _isLoading
-                                ? null
-                                : (val) async {
-                                    setState(() => _useGpu = val);
-                                    LlmDefaults.useGpu = val;
-                                    final prefs =
-                                        await SharedPreferences.getInstance();
-                                    await prefs.setBool('ai_chat.use_gpu', val);
-                                  },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+                    if (_previousAttempt != null) _buildPreviousAttemptBanner(),
+                    _buildSafeModeToggle(),
+                    if (_logFilePath != null) _buildLogPathRow(),
+                    const SizedBox(height: 8),
                     _RecommendedModelsCard(),
                   ],
                 ),
@@ -342,6 +319,141 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
             _buildBottomBar(canLoad),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPreviousAttemptBanner() {
+    final attempt = _previousAttempt!;
+    final bool exhausted = attempt.nextRungAfterCrash >= 5;
+    final String body = exhausted
+        ? 'This model failed to load in every fallback configuration on this '
+            'device. Try a smaller quant (e.g. Q4_K_S) or a smaller model.'
+        : 'The previous load attempt for this model did not finish (rung '
+            '${attempt.rung}). The next try will start from a safer '
+            'configuration (rung ${attempt.nextRungAfterCrash}).';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E0),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE0B900), width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(LucideIcons.alertTriangle,
+              color: Color(0xFF9A7A00), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  exhausted
+                      ? 'Model exceeds this device'
+                      : 'Last load attempt did not finish',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF7A5C00),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: const Color(0xFF7A5C00),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 28),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    foregroundColor: const Color(0xFF7A5C00),
+                  ),
+                  onPressed: () async {
+                    await LlmLoadDiagnostics.clearAttempt();
+                    if (!mounted) return;
+                    setState(() => _previousAttempt = null);
+                  },
+                  child: const Text('Reset and try again from rung 0'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSafeModeToggle() {
+    return InkWell(
+      onTap: _isLoading ? null : () => setState(() => _safeMode = !_safeMode),
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Checkbox(
+              value: _safeMode,
+              onChanged: _isLoading
+                  ? null
+                  : (v) => setState(() => _safeMode = v ?? false),
+              activeColor: AppColors.primaryRed,
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Safe mode (CPU only)',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  Text(
+                    'Skip GPU offload. Slower but avoids Vulkan-driver crashes '
+                    'on some Android devices.',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: AppColors.textDark.withOpacity(0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogPathRow() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(LucideIcons.fileText,
+              size: 14, color: AppColors.textDark.withOpacity(0.5)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Diagnostic log: $_logFilePath',
+              style: GoogleFonts.robotoMono(
+                fontSize: 10,
+                color: AppColors.textDark.withOpacity(0.5),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
