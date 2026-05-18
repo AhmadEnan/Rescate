@@ -272,8 +272,9 @@ class _AiChatScreenState extends State<AiChatScreen>
 
   Widget _buildInputBar(bool isArabic) {
     final canSend = _llmState.canChat && !_llmState.isGenerating;
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    final bottomPadding = keyboardHeight > 0 ? 12.0 : 110.0;
+    final view = View.of(context);
+    final keyboardHeight = view.viewInsets.bottom / view.devicePixelRatio;
+    final bottomPadding = keyboardHeight > 0 ? 8.0 : 110.0;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPadding),
