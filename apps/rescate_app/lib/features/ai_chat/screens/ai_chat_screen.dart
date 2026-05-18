@@ -1482,4 +1482,4 @@ class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
       ),
     );
   }
-}
+}

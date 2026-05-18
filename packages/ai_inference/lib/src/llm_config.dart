@@ -27,6 +27,10 @@ class LlmDefaults {
   /// used instead.
   static DeviceProfile? activeProfile;
 
+  /// Whether to use GPU acceleration (Vulkan) where possible.
+  /// If set to `false`, forces CPU inference which is highly stable across all devices.
+  static bool useGpu = true;
+
   // Sampling defaults — kept as compile-time constants.
   // 0.6 gives the model room to vary phrasing for casual or general questions
   // while staying grounded enough for emergency instructions to remain stable.
@@ -39,21 +43,24 @@ class LlmDefaults {
   /// Builds a [ModelParams] using the [activeProfile] (or fallback).
   static ModelParams buildModelParams() {
     final DeviceProfile profile = activeProfile ?? DeviceProfile.fallback;
+    final gpuEnabled = useGpu && !profile.isLowRam;
+    final backend = gpuEnabled ? GpuBackend.vulkan : GpuBackend.cpu;
+    final gpuLayers = gpuEnabled ? profile.recommendedGpuLayers : 0;
 
     Profiler.event(
       'llm.backend',
       data: <String, Object?>{
-        'resolved': 'vulkan',
+        'resolved': gpuEnabled ? 'vulkan' : 'cpu',
         'threads': profile.recommendedThreads,
         'ctx': profile.recommendedContextSize,
-        'gpuLayers': profile.recommendedGpuLayers,
+        'gpuLayers': gpuLayers,
       },
     );
 
     return ModelParams(
       contextSize: profile.recommendedContextSize,
-      gpuLayers: profile.recommendedGpuLayers,
-      preferredBackend: GpuBackend.vulkan,
+      gpuLayers: gpuLayers,
+      preferredBackend: backend,
       numberOfThreads: profile.recommendedThreads,
       numberOfThreadsBatch: profile.recommendedBatchThreads,
       batchSize: profile.recommendedBatchSize,

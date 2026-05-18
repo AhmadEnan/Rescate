@@ -43,6 +43,16 @@ Future<void> main() async {
   );
   final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
 
+  // Smart default: disable GPU by default on budget MediaTek/Mali GPUs
+  // which suffer from buggy Vulkan drivers and crash with native SIGSEGVs.
+  final soc = LlmDefaults.activeProfile?.socModel.toLowerCase() ?? '';
+  final isBudgetGpu = soc.contains('g52') || 
+                      soc.contains('g72') || 
+                      soc.contains('helio') || 
+                      soc.contains('mt67');
+  final defaultUseGpu = !isBudgetGpu;
+  LlmDefaults.useGpu = prefs.getBool('ai_chat.use_gpu') ?? defaultUseGpu;
+
   runApp(_BootstrapApp(
     measurementStore:
         Profiler.span('bootstrap.openMeasurementStore', () => MeasurementStore.open()),

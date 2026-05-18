@@ -25,6 +25,7 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
   String? _pickedPath;
   String? _errorMessage;
   bool _isLoading = false;
+  bool _useGpu = LlmDefaults.useGpu;
 
   LlmStatus get _status => LlmService.instance.status;
 
@@ -33,12 +34,21 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
     super.initState();
     LlmService.instance.addListener(_onServiceChanged);
     _restoreLastPath();
+    _restoreGpuSetting();
   }
 
   @override
   void dispose() {
     LlmService.instance.removeListener(_onServiceChanged);
     super.dispose();
+  }
+
+  Future<void> _restoreGpuSetting() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _useGpu = prefs.getBool('ai_chat.use_gpu') ?? LlmDefaults.useGpu;
+    });
   }
 
   Future<void> _restoreLastPath() async {
@@ -259,6 +269,68 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
                               ),
                           ],
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // GPU Acceleration Toggle Card
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardBackground,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: AppColors.cardBackgroundLight,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            LucideIcons.zap,
+                            color: AppColors.primaryRed,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'GPU Acceleration (Vulkan)',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textDark,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Disable if model fails to load or the app crashes.',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: AppColors.textDark.withOpacity(0.5),
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Switch(
+                            value: _useGpu,
+                            activeColor: AppColors.primaryRed,
+                            onChanged: _isLoading
+                                ? null
+                                : (val) async {
+                                    setState(() => _useGpu = val);
+                                    LlmDefaults.useGpu = val;
+                                    final prefs =
+                                        await SharedPreferences.getInstance();
+                                    await prefs.setBool('ai_chat.use_gpu', val);
+                                  },
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 16),
