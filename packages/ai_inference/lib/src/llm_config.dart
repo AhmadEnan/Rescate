@@ -27,6 +27,11 @@ class LlmDefaults {
   /// used instead.
   static DeviceProfile? activeProfile;
 
+  /// Whether GPU (Vulkan) offload is enabled. App startup sets this from
+  /// SharedPreferences (`ai_chat.use_gpu`), falling back to an SoC-based
+  /// default that disables GPU on known-buggy budget Mali/MediaTek chips.
+  static bool useGpu = true;
+
   // Sampling defaults — sourced from Unsloth Studio tuning.
   static const double temperature = 1.0;
   static const double topP = 0.95;
@@ -52,14 +57,14 @@ class LlmDefaults {
         'resolved': gpuEnabled ? 'vulkan' : 'cpu',
         'threads': profile.recommendedThreads,
         'ctx': forcedContextSize,
-        'gpuLayers': profile.recommendedGpuLayers,
+        'gpuLayers': gpuLayers,
       },
     );
 
     return ModelParams(
       contextSize: forcedContextSize,
-      gpuLayers: profile.recommendedGpuLayers,
-      preferredBackend: GpuBackend.vulkan,
+      gpuLayers: gpuLayers,
+      preferredBackend: backend,
       numberOfThreads: profile.recommendedThreads,
       numberOfThreadsBatch: profile.recommendedBatchThreads,
       batchSize: profile.recommendedBatchSize,

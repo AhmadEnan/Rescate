@@ -55,14 +55,6 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
     super.dispose();
   }
 
-  Future<void> _restoreGpuSetting() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _useGpu = prefs.getBool('ai_chat.use_gpu') ?? LlmDefaults.useGpu;
-    });
-  }
-
   Future<void> _restoreLastPath() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_kPrefsModelPathKey);
