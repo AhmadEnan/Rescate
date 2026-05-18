@@ -42,11 +42,14 @@ class LlmDefaults {
   /// Builds a [ModelParams] using the [activeProfile] (or fallback).
   static ModelParams buildModelParams() {
     final DeviceProfile profile = activeProfile ?? DeviceProfile.fallback;
+    final gpuEnabled = useGpu && !profile.isLowRam;
+    final backend = gpuEnabled ? GpuBackend.vulkan : GpuBackend.cpu;
+    final gpuLayers = gpuEnabled ? profile.recommendedGpuLayers : 0;
 
     Profiler.event(
       'llm.backend',
       data: <String, Object?>{
-        'resolved': 'vulkan',
+        'resolved': gpuEnabled ? 'vulkan' : 'cpu',
         'threads': profile.recommendedThreads,
         'ctx': forcedContextSize,
         'gpuLayers': profile.recommendedGpuLayers,

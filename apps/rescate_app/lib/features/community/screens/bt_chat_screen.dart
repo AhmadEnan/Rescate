@@ -4,6 +4,7 @@ import 'package:offline_data/offline_data.dart';
 import 'package:biometric_estimators/biometric_estimators.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
+import '../../../core/providers/demo_state.dart';
 import 'package:bluetooth_mesh/bluetooth_mesh.dart';
 
 class BtChatScreen extends StatefulWidget {
@@ -27,6 +28,9 @@ class _BtChatScreenState extends State<BtChatScreen> {
   final List<BtChatMessage> _messages = [];
   bool _isConnected = true;
 
+  bool get _effectiveConnected =>
+      DemoState.instance.isDemoMode || _isConnected;
+
   @override
   void initState() {
     super.initState();
@@ -49,11 +53,32 @@ class _BtChatScreenState extends State<BtChatScreen> {
 
   void _sendMessage() {
     final text = _msgController.text.trim();
-    if (text.isEmpty || !_isConnected) return;
-    _nearby.sendMessage(widget.endpointId, text);
+    if (text.isEmpty || !_effectiveConnected) return;
+
+    // Send over BT if real connection
+    if (!DemoState.instance.isDemoMode) {
+      _nearby.sendMessage(widget.endpointId, text);
+    }
     setState(() => _messages.add(BtChatMessage(text: text, isSent: true)));
     _msgController.clear();
     _scrollToBottom();
+
+    // In demo mode, simulate a doctor reply after a short delay
+    if (DemoState.instance.isDemoMode) {
+      Future.delayed(const Duration(milliseconds: 1200), () {
+        if (!mounted) return;
+        final replies = [
+          'Thank you for sharing your vitals. Let me review them.',
+          'I can see your readings. Your heart rate looks normal.',
+          'Based on what you\'ve described, I\'d recommend monitoring your blood pressure.',
+          'I\'ve received your information. Can you tell me more about your symptoms?',
+          'Everything looks stable. Keep taking measurements at the same time each day.',
+        ];
+        final reply = replies[DateTime.now().second % replies.length];
+        setState(() => _messages.add(BtChatMessage(text: reply, isSent: false)));
+        _scrollToBottom();
+      });
+    }
   }
 
   void _scrollToBottom() {
@@ -69,6 +94,30 @@ class _BtChatScreenState extends State<BtChatScreen> {
   }
 
   Future<void> _shareVitals() async {
+    // Try demo vitals first
+    final demo = DemoState.instance;
+    if (demo.isDemoMode) {
+      if (demo.readings.isEmpty) demo.generateMockReadings();
+      final text = demo.formatReadingsForChat();
+      if (!_effectiveConnected) return;
+      if (!demo.isDemoMode) {
+        _nearby.sendMessage(widget.endpointId, text);
+      }
+      setState(() => _messages.add(BtChatMessage(text: text, isSent: true)));
+      _scrollToBottom();
+      // Simulate doctor acknowledgment
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (!mounted) return;
+        setState(() => _messages.add(BtChatMessage(
+          text: 'Thank you for sharing your vitals. I\'ll review them now. Your readings look within normal range overall.',
+          isSent: false,
+        )));
+        _scrollToBottom();
+      });
+      return;
+    }
+
+    // Real vitals from MeasurementStore
     try {
       final store = await MeasurementStore.open();
       final recent = await store.recentAll(limit: 5);
@@ -95,7 +144,7 @@ class _BtChatScreenState extends State<BtChatScreen> {
         buf.writeln('• ${m.displayName}: $val $unit');
       }
       final text = buf.toString().trim();
-      if (!_isConnected) return;
+      if (!_effectiveConnected) return;
       _nearby.sendMessage(widget.endpointId, text);
       setState(() => _messages.add(BtChatMessage(text: text, isSent: true)));
       _scrollToBottom();

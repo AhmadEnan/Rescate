@@ -3,11 +3,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:ai_inference/ai_inference.dart';
 import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/providers/demo_state.dart';
 
 const String _kPrefsConversationsKey = 'ai_chat.conversations.v1';
 const String _kPrefsActiveIdKey = 'ai_chat.active_conversation_id';
@@ -109,9 +112,16 @@ class LlmState extends ChangeNotifier {
 
   LlmStatus get modelStatus => LlmService.instance.status;
   bool get isModelReady => LlmService.instance.isReady;
-  bool get isGenerating => LlmService.instance.isGenerating;
+  bool get isGenerating =>
+      LlmService.instance.isGenerating || _demoGenerating;
   String? get loadedModelPath => LlmService.instance.loadedModelPath;
   String? get modelError => LlmService.instance.lastError;
+
+  /// True when either a real model is loaded OR demo mode is on.
+  bool get canChat =>
+      DemoState.instance.isDemoMode || LlmService.instance.isReady;
+
+  bool _demoGenerating = false;
 
   // ── Conversations ──────────────────────────────────────────────────────────
 
@@ -228,7 +238,9 @@ class LlmState extends ChangeNotifier {
   }
 
   Future<void> sendMessage(String text, {bool isArabic = false}) async {
-    if (!isModelReady || isGenerating) return;
+    final demo = DemoState.instance.isDemoMode;
+    if (!demo && !isModelReady) return;
+    if (isGenerating) return;
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
 
@@ -280,6 +292,40 @@ class LlmState extends ChangeNotifier {
       notifyListeners();
     }
 
+    // ── Demo mode: stream a mock response word-by-word ───────────────────
+    if (demo) {
+      _demoGenerating = true;
+      notifyListeners();
+
+      final response = DemoState.instance.getRandomResponse();
+      final words = response.split(' ');
+      final rng = Random();
+
+      aiMessage.ttftMs = 180 + rng.nextInt(120);
+      Timer(Duration(milliseconds: aiMessage.ttftMs!), () {
+        int i = 0;
+        Timer.periodic(const Duration(milliseconds: 45), (timer) {
+          if (i >= words.length) {
+            timer.cancel();
+            sendSw.stop();
+            aiMessage.totalMs = sendSw.elapsedMilliseconds;
+            aiMessage.isStreaming = false;
+            _demoGenerating = false;
+            convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
+            notifyListeners();
+            unawaited(_persist());
+            return;
+          }
+          aiMessage.text += (i == 0 ? '' : ' ') + words[i];
+          i++;
+          convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
+          notifyListeners();
+        });
+      });
+      return;
+    }
+
+    // ── Real model path ──────────────────────────────────────────────────
     try {
       final stream = LlmService.instance.generateStream(trimmed, isArabic: isArabic);
 
