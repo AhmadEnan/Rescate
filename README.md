@@ -42,7 +42,11 @@
 
 <!-- Model download note: placed immediately after the banner so users see it early -->
 <p align="center">
-  <strong>Model download note:</strong> The app does not include the on-device LLM model by default. To enable the on-device AI chat feature you must download the GGUF model separately from <a href="https://huggingface.co/">Hugging Face</a>.
+  <div style="border:2px solid #e74c3c; background:#fff0f0; padding:12px; border-radius:8px; display:inline-block; text-align:left; max-width:720px;">
+    <strong style="color:#c0392b;">⚠️ Model download required</strong><br>
+    The app does not include the on-device LLM model by default. To enable the on-device AI chat feature you must download the GGUF model separately from
+    <a href="https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF?show_file_info=gemma-4-E2B-it-Q4_K_M.gguf" target="_blank" rel="noopener">https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF?show_file_info=gemma-4-E2B-it-Q4_K_M.gguf</a>.
+  </div>
 </p>
 
 <table>
