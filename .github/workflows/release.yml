@@ -1,0 +1,75 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Release APK & Create GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          flutter pub get
+          cd apps/rescate_app
+          flutter pub get
+
+      - name: Run workspace tests
+        run: flutter test
+
+      - name: Build Release APK
+        run: |
+          cd apps/rescate_app
+          flutter build apk --release
+
+      - name: Prepare APK Artifact
+        run: |
+          mkdir -p build_output
+          cp apps/rescate_app/build/app/outputs/flutter-apk/app-release.apk build_output/rescate-app-release.apk
+
+      - name: Set Release Tag
+        id: release_info
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "TAG_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+            echo "RELEASE_NAME=Release ${{ github.ref_name }}" >> $GITHUB_ENV
+          else
+            TAG_NAME="v1.0.0-build.${{ github.run_number }}"
+            echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+            echo "RELEASE_NAME=Release $TAG_NAME" >> $GITHUB_ENV
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.RELEASE_NAME }}
+          files: build_output/rescate-app-release.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
