@@ -42,3 +42,9 @@ Rescate is an offline-first emergency response application built with Flutter & 
 - **Documentation & Git Commit Consolidation**:
   - Enhanced the "Model Download required" callout in `README.md` using GitHub-flavored Markdown native alerts (`> [!IMPORTANT]`) for visual appeal, theme compatibility, and clear downloading instructions.
   - Staged and created structured, logical commits across monorepo packages (dev_profiler, ai_inference, rescate_app, benchmarks, and docs).
+- **GitHub Actions Release CI**:
+  - Created `.github/workflows/release.yml` with Java 21, Flutter setup, workspace unit test execution, release APK compilation (`flutter build apk --release`), and automatic publishing to GitHub Releases via `softprops/action-gh-release@v2`.
+  - Verified local release build end-to-end (`app-release.apk` - 153.8MB compiled cleanly).
+  - Pushed all commits to `origin/main` (`https://github.com/AhmadEnan/Rescate`).
+
+
