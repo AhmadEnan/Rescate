@@ -1,0 +1,913 @@
+{
+  "session": {
+    "started_at": "2026-08-08T10:15:44.224",
+    "ended_at": "2026-08-08T10:22:39.996660",
+    "build_mode": "profile",
+    "profiler_enabled": true
+  },
+  "spans": [
+    {
+      "name": "chat.sendMessage",
+      "count": 2,
+      "total_ms": 194070,
+      "min_ms": 84082,
+      "max_ms": 109988,
+      "mean_ms": 97035,
+      "rss_delta_bytes_sum": 0,
+      "rss_delta_bytes_max": 0,
+      "samples_ms": [
+        84082,
+        109988
+      ]
+    },
+    {
+      "name": "llm.generateStream.total",
+      "count": 2,
+      "total_ms": 194063,
+      "min_ms": 84078,
+      "max_ms": 109985,
+      "mean_ms": 97032,
+      "rss_delta_bytes_sum": -372674560,
+      "rss_delta_bytes_max": 0,
+      "samples_ms": [
+        84078,
+        109985
+      ]
+    },
+    {
+      "name": "llm.loadModel",
+      "count": 1,
+      "total_ms": 11737,
+      "min_ms": 11737,
+      "max_ms": 11737,
+      "mean_ms": 11737,
+      "rss_delta_bytes_sum": 3177394176,
+      "rss_delta_bytes_max": 3177394176,
+      "samples_ms": [
+        11737
+      ]
+    },
+    {
+      "name": "chat.autoLoadModel",
+      "count": 1,
+      "total_ms": 11737,
+      "min_ms": 11737,
+      "max_ms": 11737,
+      "mean_ms": 11737,
+      "rss_delta_bytes_sum": 3177394176,
+      "rss_delta_bytes_max": 3177394176,
+      "samples_ms": [
+        11737
+      ]
+    },
+    {
+      "name": "llm.engine.loadModel",
+      "count": 1,
+      "total_ms": 10912,
+      "min_ms": 10912,
+      "max_ms": 10912,
+      "mean_ms": 10912,
+      "rss_delta_bytes_sum": 3111440384,
+      "rss_delta_bytes_max": 3111440384,
+      "samples_ms": [
+        10912
+      ]
+    },
+    {
+      "name": "tts.initialize",
+      "count": 1,
+      "total_ms": 869,
+      "min_ms": 869,
+      "max_ms": 869,
+      "mean_ms": 869,
+      "rss_delta_bytes_sum": 112828416,
+      "rss_delta_bytes_max": 112828416,
+      "samples_ms": [
+        869
+      ]
+    },
+    {
+      "name": "chat.persist",
+      "count": 4,
+      "total_ms": 541,
+      "min_ms": 40,
+      "max_ms": 309,
+      "mean_ms": 135,
+      "rss_delta_bytes_sum": 2375680,
+      "rss_delta_bytes_max": 2641920,
+      "samples_ms": [
+        118,
+        309,
+        74,
+        40
+      ]
+    },
+    {
+      "name": "tts.speak",
+      "count": 1,
+      "total_ms": 327,
+      "min_ms": 327,
+      "max_ms": 327,
+      "mean_ms": 327,
+      "rss_delta_bytes_sum": 3002368,
+      "rss_delta_bytes_max": 3002368,
+      "samples_ms": [
+        327
+      ]
+    },
+    {
+      "name": "db.measurements.open",
+      "count": 4,
+      "total_ms": 226,
+      "min_ms": 46,
+      "max_ms": 70,
+      "mean_ms": 57,
+      "rss_delta_bytes_sum": 12288000,
+      "rss_delta_bytes_max": 11837440,
+      "samples_ms": [
+        63,
+        70,
+        46,
+        47
+      ]
+    },
+    {
+      "name": "bootstrap.deviceProfile",
+      "count": 1,
+      "total_ms": 150,
+      "min_ms": 150,
+      "max_ms": 150,
+      "mean_ms": 150,
+      "rss_delta_bytes_sum": 34390016,
+      "rss_delta_bytes_max": 34390016,
+      "samples_ms": [
+        150
+      ]
+    },
+    {
+      "name": "rag.initialize",
+      "count": 2,
+      "total_ms": 106,
+      "min_ms": 0,
+      "max_ms": 106,
+      "mean_ms": 53,
+      "rss_delta_bytes_sum": 51863552,
+      "rss_delta_bytes_max": 51863552,
+      "samples_ms": [
+        106,
+        0
+      ]
+    },
+    {
+      "name": "rag.search",
+      "count": 2,
+      "total_ms": 105,
+      "min_ms": 0,
+      "max_ms": 105,
+      "mean_ms": 53,
+      "rss_delta_bytes_sum": -36864,
+      "rss_delta_bytes_max": 0,
+      "samples_ms": [
+        105,
+        0
+      ]
+    },
+    {
+      "name": "chat.restore",
+      "count": 1,
+      "total_ms": 86,
+      "min_ms": 86,
+      "max_ms": 86,
+      "mean_ms": 86,
+      "rss_delta_bytes_sum": 14729216,
+      "rss_delta_bytes_max": 14729216,
+      "samples_ms": [
+        86
+      ]
+    },
+    {
+      "name": "bootstrap.openMeasurementStore",
+      "count": 1,
+      "total_ms": 63,
+      "min_ms": 63,
+      "max_ms": 63,
+      "mean_ms": 63,
+      "rss_delta_bytes_sum": 11837440,
+      "rss_delta_bytes_max": 11837440,
+      "samples_ms": [
+        63
+      ]
+    },
+    {
+      "name": "llm.load.preflight",
+      "count": 1,
+      "total_ms": 52,
+      "min_ms": 52,
+      "max_ms": 52,
+      "mean_ms": 52,
+      "rss_delta_bytes_sum": 1773568,
+      "rss_delta_bytes_max": 1773568,
+      "samples_ms": [
+        52
+      ]
+    },
+    {
+      "name": "bootstrap.detectSensors",
+      "count": 1,
+      "total_ms": 38,
+      "min_ms": 38,
+      "max_ms": 38,
+      "mean_ms": 38,
+      "rss_delta_bytes_sum": 7520256,
+      "rss_delta_bytes_max": 7520256,
+      "samples_ms": [
+        38
+      ]
+    },
+    {
+      "name": "sensors.probe.featureMicrophone",
+      "count": 1,
+      "total_ms": 35,
+      "min_ms": 35,
+      "max_ms": 35,
+      "mean_ms": 35,
+      "rss_delta_bytes_sum": 7520256,
+      "rss_delta_bytes_max": 7520256,
+      "samples_ms": [
+        35
+      ]
+    },
+    {
+      "name": "sensors.probe.featureFace",
+      "count": 1,
+      "total_ms": 34,
+      "min_ms": 34,
+      "max_ms": 34,
+      "mean_ms": 34,
+      "rss_delta_bytes_sum": 7520256,
+      "rss_delta_bytes_max": 7520256,
+      "samples_ms": [
+        34
+      ]
+    },
+    {
+      "name": "sensors.probe.featureIris",
+      "count": 1,
+      "total_ms": 34,
+      "min_ms": 34,
+      "max_ms": 34,
+      "mean_ms": 34,
+      "rss_delta_bytes_sum": 7786496,
+      "rss_delta_bytes_max": 7786496,
+      "samples_ms": [
+        34
+      ]
+    },
+    {
+      "name": "sensors.probe.featureFingerprint",
+      "count": 1,
+      "total_ms": 33,
+      "min_ms": 33,
+      "max_ms": 33,
+      "mean_ms": 33,
+      "rss_delta_bytes_sum": 7483392,
+      "rss_delta_bytes_max": 7483392,
+      "samples_ms": [
+        33
+      ]
+    },
+    {
+      "name": "sensors.probe.cameraList",
+      "count": 1,
+      "total_ms": 32,
+      "min_ms": 32,
+      "max_ms": 32,
+      "mean_ms": 32,
+      "rss_delta_bytes_sum": 7344128,
+      "rss_delta_bytes_max": 7344128,
+      "samples_ms": [
+        32
+      ]
+    },
+    {
+      "name": "sensors.probe.microphoneAvailable",
+      "count": 1,
+      "total_ms": 31,
+      "min_ms": 31,
+      "max_ms": 31,
+      "mean_ms": 31,
+      "rss_delta_bytes_sum": 7344128,
+      "rss_delta_bytes_max": 7344128,
+      "samples_ms": [
+        31
+      ]
+    },
+    {
+      "name": "db.measurements.recentAll",
+      "count": 3,
+      "total_ms": 31,
+      "min_ms": 3,
+      "max_ms": 21,
+      "mean_ms": 10,
+      "rss_delta_bytes_sum": 22802432,
+      "rss_delta_bytes_max": 23412736,
+      "samples_ms": [
+        21,
+        7,
+        3
+      ]
+    },
+    {
+      "name": "sensors.probe.thermistorAvailable",
+      "count": 1,
+      "total_ms": 29,
+      "min_ms": 29,
+      "max_ms": 29,
+      "mean_ms": 29,
+      "rss_delta_bytes_sum": 7344128,
+      "rss_delta_bytes_max": 7344128,
+      "samples_ms": [
+        29
+      ]
+    },
+    {
+      "name": "sensors.probe.biometryAvailability",
+      "count": 1,
+      "total_ms": 28,
+      "min_ms": 28,
+      "max_ms": 28,
+      "mean_ms": 28,
+      "rss_delta_bytes_sum": 6762496,
+      "rss_delta_bytes_max": 6762496,
+      "samples_ms": [
+        28
+      ]
+    },
+    {
+      "name": "bootstrap.initOfflineMapCache",
+      "count": 1,
+      "total_ms": 25,
+      "min_ms": 25,
+      "max_ms": 25,
+      "mean_ms": 25,
+      "rss_delta_bytes_sum": 4472832,
+      "rss_delta_bytes_max": 4472832,
+      "samples_ms": [
+        25
+      ]
+    },
+    {
+      "name": "sensors.probe.uwbRadarAvailability",
+      "count": 1,
+      "total_ms": 21,
+      "min_ms": 21,
+      "max_ms": 21,
+      "mean_ms": 21,
+      "rss_delta_bytes_sum": 3457024,
+      "rss_delta_bytes_max": 3457024,
+      "samples_ms": [
+        21
+      ]
+    },
+    {
+      "name": "sensors.probe.cameraDepthCapability",
+      "count": 1,
+      "total_ms": 15,
+      "min_ms": 15,
+      "max_ms": 15,
+      "mean_ms": 15,
+      "rss_delta_bytes_sum": 1421312,
+      "rss_delta_bytes_max": 1421312,
+      "samples_ms": [
+        15
+      ]
+    },
+    {
+      "name": "bootstrap.sharedPreferences",
+      "count": 1,
+      "total_ms": 13,
+      "min_ms": 13,
+      "max_ms": 13,
+      "mean_ms": 13,
+      "rss_delta_bytes_sum": 1421312,
+      "rss_delta_bytes_max": 1421312,
+      "samples_ms": [
+        13
+      ]
+    },
+    {
+      "name": "sensors.probe.listNativeSensors",
+      "count": 1,
+      "total_ms": 5,
+      "min_ms": 5,
+      "max_ms": 5,
+      "mean_ms": 5,
+      "rss_delta_bytes_sum": 675840,
+      "rss_delta_bytes_max": 675840,
+      "samples_ms": [
+        5
+      ]
+    },
+    {
+      "name": "sensors.probe.motionAvailability",
+      "count": 1,
+      "total_ms": 5,
+      "min_ms": 5,
+      "max_ms": 5,
+      "mean_ms": 5,
+      "rss_delta_bytes_sum": 675840,
+      "rss_delta_bytes_max": 675840,
+      "samples_ms": [
+        5
+      ]
+    },
+    {
+      "name": "rag.buildPrompt",
+      "count": 2,
+      "total_ms": 2,
+      "min_ms": 1,
+      "max_ms": 1,
+      "mean_ms": 1,
+      "rss_delta_bytes_sum": 339968,
+      "rss_delta_bytes_max": 237568,
+      "samples_ms": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "llm.load.readFreeRam",
+      "count": 1,
+      "total_ms": 1,
+      "min_ms": 1,
+      "max_ms": 1,
+      "mean_ms": 1,
+      "rss_delta_bytes_sum": 872448,
+      "rss_delta_bytes_max": 872448,
+      "samples_ms": [
+        1
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "llm.device",
+      "t_ms_since_session": 152,
+      "data": {
+        "cores": 8,
+        "bigCores": 2,
+        "recommendedThreads": 2,
+        "recommendedBatchThreads": 6,
+        "totalRamMb": 7651,
+        "availRamMb": 4052,
+        "isLowRam": false,
+        "socModel": "MT6893",
+        "contextSize": 4096
+      }
+    },
+    {
+      "name": "llm.load.slowVulkanSoc",
+      "t_ms_since_session": 1139,
+      "data": {
+        "socModel": "MT6893",
+        "rungs": 2
+      }
+    },
+    {
+      "name": "llm.backend",
+      "t_ms_since_session": 12135,
+      "data": {
+        "resolved": "cpu",
+        "actualBackend": "CPU",
+        "actualGpuLayers": 0,
+        "cpuVariant": null,
+        "availableBackends": "CPU",
+        "rung": 0,
+        "gpuLayers": 0,
+        "ctx": 2048,
+        "batchSize": 256,
+        "microBatchSize": 128,
+        "threads": 2,
+        "threadsBatch": 6,
+        "mlock": false,
+        "mmap": true,
+        "flashAttention": "enabled",
+        "kvK": "q8_0",
+        "kvV": "q8_0",
+        "splitMode": "layer",
+        "mainGpu": 0,
+        "modelBytes": 2620198656,
+        "description": "rung3/cpu: cpu mlock=false kv=q8_0 ctx=2048 batch=256/128"
+      }
+    },
+    {
+      "name": "llm.load.rungSuccess",
+      "t_ms_since_session": 12135,
+      "data": {
+        "rung": 0,
+        "description": "rung3/cpu: cpu mlock=false kv=q8_0 ctx=2048 batch=256/128"
+      }
+    },
+    {
+      "name": "llm.sampler",
+      "t_ms_since_session": 42894,
+      "data": {
+        "temp": 1.0,
+        "topP": 0.95,
+        "topK": 64,
+        "minP": 0.0,
+        "penalty": 1.1,
+        "maxTokens": 1024,
+        "stopSequences": [
+          "<turn|>"
+        ],
+        "reusePromptPrefix": true,
+        "path": "noTools"
+      }
+    },
+    {
+      "name": "llm.ttft",
+      "t_ms_since_session": 103976,
+      "data": {
+        "ms": 61251
+      }
+    },
+    {
+      "name": "chat.firstToken",
+      "t_ms_since_session": 111151,
+      "data": {
+        "ms": 68430
+      }
+    },
+    {
+      "name": "llm.sampler",
+      "t_ms_since_session": 305811,
+      "data": {
+        "temp": 1.0,
+        "topP": 0.95,
+        "topK": 64,
+        "minP": 0.0,
+        "penalty": 1.1,
+        "maxTokens": 1024,
+        "stopSequences": [
+          "<turn|>"
+        ],
+        "reusePromptPrefix": true,
+        "path": "noTools"
+      }
+    },
+    {
+      "name": "llm.ttft",
+      "t_ms_since_session": 371063,
+      "data": {
+        "ms": 65276
+      }
+    },
+    {
+      "name": "chat.firstToken",
+      "t_ms_since_session": 379177,
+      "data": {
+        "ms": 73394
+      }
+    }
+  ],
+  "counters": {
+    "sensors.probe.calls": 12,
+    "sensors.detected": 26,
+    "db.measurements.open.ops": 4,
+    "chat.restored_messages": 9,
+    "db.measurements.rows_read": 0,
+    "rag.chunks.loaded": 312,
+    "llm.load.preflight.calls": 1,
+    "llm.load.preflight.bytes": 2620198656,
+    "chat.persist.bytes": 54166,
+    "rag.search.ops": 1560,
+    "rag.chunks.searched": 4,
+    "chat.flush_answer": 11,
+    "llm.tokens": 11,
+    "llm.tokens.thought": 0,
+    "llm.tokens.answer": 11,
+    "llm.channel_split_ops": 11,
+    "tts.speak.chars": 122,
+    "rag.cache_hits": 1
+  },
+  "traces": [
+    {
+      "id": 1,
+      "name": "app.bootstrap",
+      "started_at_ms_since_session": 1,
+      "wall_ms": 192,
+      "ops": 0,
+      "rss_delta_bytes": 40284160,
+      "steps": [
+        {
+          "name": "bootstrap.deviceProfile",
+          "wall_ms": 150,
+          "ops": 1,
+          "ops_per_sec": 7,
+          "rss_delta_bytes": 34390016
+        },
+        {
+          "name": "bootstrap.mapCache",
+          "wall_ms": 25,
+          "ops": 1,
+          "ops_per_sec": 40,
+          "rss_delta_bytes": 4472832
+        },
+        {
+          "name": "bootstrap.sharedPreferences",
+          "wall_ms": 13,
+          "ops": 1,
+          "ops_per_sec": 77,
+          "rss_delta_bytes": 1421312
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "sensors.detectAll",
+      "started_at_ms_since_session": 177,
+      "wall_ms": 38,
+      "ops": 0,
+      "rss_delta_bytes": 7520256,
+      "steps": [
+        {
+          "name": "sensors.probe",
+          "wall_ms": 37,
+          "ops": 29,
+          "ops_per_sec": 784,
+          "rss_delta_bytes": 7520256
+        },
+        {
+          "name": "sensors.detect.motion",
+          "wall_ms": 0,
+          "ops": 4,
+          "rss_delta_bytes": 0
+        },
+        {
+          "name": "sensors.detect.environment",
+          "wall_ms": 0,
+          "ops": 3,
+          "rss_delta_bytes": 0
+        },
+        {
+          "name": "sensors.detect.proximityDepth",
+          "wall_ms": 0,
+          "ops": 4,
+          "rss_delta_bytes": 0
+        },
+        {
+          "name": "sensors.detect.radio",
+          "wall_ms": 0,
+          "ops": 2,
+          "rss_delta_bytes": 0
+        },
+        {
+          "name": "sensors.detect.biometric",
+          "wall_ms": 0,
+          "ops": 5,
+          "rss_delta_bytes": 0
+        },
+        {
+          "name": "sensors.detect.vitals",
+          "wall_ms": 0,
+          "ops": 3,
+          "rss_delta_bytes": 0
+        },
+        {
+          "name": "sensors.detect.systemHardware",
+          "wall_ms": 0,
+          "ops": 3,
+          "rss_delta_bytes": 0
+        },
+        {
+          "name": "sensors.detect.audioVisual",
+          "wall_ms": 0,
+          "ops": 2,
+          "rss_delta_bytes": 0
+        },
+        {
+          "name": "sensors.orderedByCatalog",
+          "wall_ms": 0,
+          "ops": 26,
+          "rss_delta_bytes": 0
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "llm.loadModel",
+      "started_at_ms_since_session": 398,
+      "wall_ms": 11737,
+      "ops": 0,
+      "rss_delta_bytes": 3177394176,
+      "data": {
+        "model": "/storage/emulated/0/Download/model.gguf"
+      },
+      "steps": [
+        {
+          "name": "llm.load.preflight",
+          "wall_ms": 52,
+          "ops": 1,
+          "ops_per_sec": 19,
+          "rss_delta_bytes": 1773568
+        },
+        {
+          "name": "llm.load.diagnostics",
+          "wall_ms": 14,
+          "ops": 0,
+          "rss_delta_bytes": 1794048
+        },
+        {
+          "name": "llm.load.rung",
+          "wall_ms": 10980,
+          "ops": 1,
+          "ops_per_sec": 0,
+          "rss_delta_bytes": 3113259008,
+          "data": {
+            "rung": 0,
+            "description": "rung3/cpu: cpu mlock=false kv=q8_0 ctx=2048 batch=256/128",
+            "backend": "cpu"
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "chat.turn",
+      "started_at_ms_since_session": 42720,
+      "wall_ms": 84082,
+      "ops": 0,
+      "rss_delta_bytes": -198606848,
+      "data": {
+        "lang": "en",
+        "prompt_tokens": 225,
+        "runtime": {
+          "cpuVariant": null,
+          "backend": "CPU",
+          "availableBackends": "CPU",
+          "gpuLayers": 0,
+          "requestedBackend": "cpu",
+          "requestedGpuLayers": 0,
+          "threads": 2,
+          "threadsBatch": 6,
+          "batchSize": 256,
+          "microBatchSize": 128,
+          "contextSize": 2048
+        },
+        "native": {
+          "load_ms": 61070,
+          "prompt_eval_ms": 61068,
+          "prompt_eval_tokens": 226,
+          "eval_ms": 22648,
+          "eval_tokens": 25,
+          "sample_ms": 153,
+          "sample_count": 25,
+          "reused_graphs": 24,
+          "prompt_tokens_per_sec": 4,
+          "decode_tokens_per_sec": 1
+        }
+      },
+      "steps": [
+        {
+          "name": "chat.prepare",
+          "wall_ms": 0,
+          "ops": 1,
+          "rss_delta_bytes": -40960
+        },
+        {
+          "name": "rag.search",
+          "wall_ms": 105,
+          "ops": 1560,
+          "ops_per_sec": 14857,
+          "rss_delta_bytes": -446464,
+          "data": {
+            "chunks": 2
+          }
+        },
+        {
+          "name": "rag.buildPrompt",
+          "wall_ms": 62,
+          "ops": 1050,
+          "ops_per_sec": 16935,
+          "rss_delta_bytes": -2101248,
+          "data": {
+            "prompt_tokens": 225,
+            "prompt_chars": 1050
+          }
+        },
+        {
+          "name": "llm.decode",
+          "wall_ms": 83879,
+          "ops": 4,
+          "ops_per_sec": 0,
+          "rss_delta_bytes": -195276800,
+          "data": {
+            "ttft_ms": 61251,
+            "tokens": 4,
+            "tokens_thought": 0,
+            "tokens_answer": 4,
+            "channel_split_ops": 4,
+            "token_gap_ms_min": 7175,
+            "token_gap_ms_max": 7449,
+            "token_gap_ms_mean": 7305
+          }
+        },
+        {
+          "name": "chat.finalize",
+          "wall_ms": 0,
+          "ops": 1,
+          "rss_delta_bytes": 0
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "chat.turn",
+      "started_at_ms_since_session": 305783,
+      "wall_ms": 109988,
+      "ops": 0,
+      "rss_delta_bytes": -176852992,
+      "data": {
+        "lang": "en",
+        "prompt_tokens": 225,
+        "runtime": {
+          "cpuVariant": null,
+          "backend": "CPU",
+          "availableBackends": "CPU",
+          "gpuLayers": 0,
+          "requestedBackend": "cpu",
+          "requestedGpuLayers": 0,
+          "threads": 2,
+          "threadsBatch": 6,
+          "batchSize": 256,
+          "microBatchSize": 128,
+          "contextSize": 2048
+        },
+        "native": {
+          "load_ms": 61070,
+          "prompt_eval_ms": 65242,
+          "prompt_eval_tokens": 226,
+          "eval_ms": 44355,
+          "eval_tokens": 44,
+          "sample_ms": 335,
+          "sample_count": 44,
+          "reused_graphs": 42,
+          "prompt_tokens_per_sec": 3,
+          "decode_tokens_per_sec": 1
+        }
+      },
+      "steps": [
+        {
+          "name": "chat.prepare",
+          "wall_ms": 0,
+          "ops": 1,
+          "rss_delta_bytes": 0
+        },
+        {
+          "name": "rag.search",
+          "wall_ms": 0,
+          "ops": 0,
+          "rss_delta_bytes": 0,
+          "data": {
+            "chunks": 2
+          }
+        },
+        {
+          "name": "rag.buildPrompt",
+          "wall_ms": 23,
+          "ops": 1050,
+          "ops_per_sec": 45652,
+          "rss_delta_bytes": 1499136,
+          "data": {
+            "prompt_tokens": 225,
+            "prompt_chars": 1050
+          }
+        },
+        {
+          "name": "llm.decode",
+          "wall_ms": 109939,
+          "ops": 7,
+          "ops_per_sec": 0,
+          "rss_delta_bytes": -179335168,
+          "data": {
+            "ttft_ms": 65276,
+            "tokens": 7,
+            "tokens_thought": 0,
+            "tokens_answer": 7,
+            "channel_split_ops": 7,
+            "token_gap_ms_min": 4063,
+            "token_gap_ms_max": 8147,
+            "token_gap_ms_mean": 7447
+          }
+        },
+        {
+          "name": "chat.finalize",
+          "wall_ms": 0,
+          "ops": 1,
+          "rss_delta_bytes": 0
+        }
+      ]
+    }
+  ]
+}

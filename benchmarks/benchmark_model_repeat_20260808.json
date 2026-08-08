@@ -1,0 +1,66 @@
+{
+  "formatVersion": 1,
+  "capturedAt": "2026-08-08T07:22:39.996660Z",
+  "buildMode": "profile",
+  "metadata": {
+    "profilerEnabled": true
+  },
+  "fixedCases": [
+    {
+      "id": "burn",
+      "prompt": "A person has a severe burn. What should I do in the first five minutes?",
+      "isArabic": false
+    },
+    {
+      "id": "unconscious_breathing",
+      "prompt": "Someone is unconscious but breathing normally. What position and checks should I use?",
+      "isArabic": false
+    },
+    {
+      "id": "bleach_ingestion",
+      "prompt": "A child may have swallowed bleach. What immediate steps are safe and what must I avoid?",
+      "isArabic": false
+    },
+    {
+      "id": "arabic_burn",
+      "prompt": "شخص لديه حرق شديد. ماذا أفعل في الدقائق الخمس الأولى؟",
+      "isArabic": true
+    }
+  ],
+  "measurements": [
+    {
+      "caseId": "turn-1",
+      "totalMs": 84082,
+      "timeToFirstTokenMs": 61251,
+      "backend": "CPU",
+      "gpuLayers": 0,
+      "threads": 2,
+      "threadsBatch": 6,
+      "batchSize": 256,
+      "microBatchSize": 128,
+      "promptTokens": 226,
+      "promptEvalMs": 61068,
+      "decodeTokens": 25,
+      "decodeMs": 22648,
+      "promptTokensPerSecond": 4,
+      "decodeTokensPerSecond": 1
+    },
+    {
+      "caseId": "turn-2",
+      "totalMs": 109988,
+      "timeToFirstTokenMs": 65276,
+      "backend": "CPU",
+      "gpuLayers": 0,
+      "threads": 2,
+      "threadsBatch": 6,
+      "batchSize": 256,
+      "microBatchSize": 128,
+      "promptTokens": 226,
+      "promptEvalMs": 65242,
+      "decodeTokens": 44,
+      "decodeMs": 44355,
+      "promptTokensPerSecond": 3,
+      "decodeTokensPerSecond": 1
+    }
+  ]
+}

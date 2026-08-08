@@ -1,0 +1,80 @@
+{
+  "formatVersion": 1,
+  "capturedAt": "2026-08-08T00:12:10.647778Z",
+  "buildMode": "profile",
+  "metadata": {
+    "profilerEnabled": true
+  },
+  "fixedCases": [
+    {
+      "id": "burn",
+      "prompt": "A person has a severe burn. What should I do in the first five minutes?",
+      "isArabic": false
+    },
+    {
+      "id": "unconscious_breathing",
+      "prompt": "Someone is unconscious but breathing normally. What position and checks should I use?",
+      "isArabic": false
+    },
+    {
+      "id": "bleach_ingestion",
+      "prompt": "A child may have swallowed bleach. What immediate steps are safe and what must I avoid?",
+      "isArabic": false
+    },
+    {
+      "id": "arabic_burn",
+      "prompt": "شخص لديه حرق شديد. ماذا أفعل في الدقائق الخمس الأولى؟",
+      "isArabic": true
+    }
+  ],
+  "measurements": [
+    {
+      "caseId": "turn-1",
+      "totalMs": 223187,
+      "backend": "CPU",
+      "gpuLayers": 0,
+      "threads": 2,
+      "threadsBatch": 6,
+      "batchSize": 256,
+      "microBatchSize": 128,
+      "promptTokens": 718,
+      "promptEvalMs": 161986,
+      "decodeTokens": 93,
+      "decodeMs": 60530,
+      "promptTokensPerSecond": 4,
+      "decodeTokensPerSecond": 2
+    },
+    {
+      "caseId": "turn-2",
+      "totalMs": 224954,
+      "backend": "CPU",
+      "gpuLayers": 0,
+      "threads": 2,
+      "threadsBatch": 6,
+      "batchSize": 256,
+      "microBatchSize": 128,
+      "promptTokens": 718,
+      "promptEvalMs": 168700,
+      "decodeTokens": 86,
+      "decodeMs": 55829,
+      "promptTokensPerSecond": 4,
+      "decodeTokensPerSecond": 2
+    },
+    {
+      "caseId": "turn-3",
+      "totalMs": 88582,
+      "backend": "CPU",
+      "gpuLayers": 0,
+      "threads": 2,
+      "threadsBatch": 6,
+      "batchSize": 256,
+      "microBatchSize": 128,
+      "promptTokens": 206,
+      "promptEvalMs": 48777,
+      "decodeTokens": 61,
+      "decodeMs": 39310,
+      "promptTokensPerSecond": 4,
+      "decodeTokensPerSecond": 2
+    }
+  ]
+}
