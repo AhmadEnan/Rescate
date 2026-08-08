@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 
 import 'biometric_id.dart';
@@ -97,22 +98,73 @@ class SensorAvailabilityService {
   /// Probes every sensor via the native channel, runs all detectors, and
   /// caches the resulting 26-entry report. Safe to call multiple times.
   Future<void> detectAll() async {
-    final Stopwatch sw = Stopwatch()..start();
-    final NativeProbe probe = await _probe();
-    final List<SensorReport> all = <SensorReport>[
-      ...detectMotion(probe),
-      ...detectEnvironment(probe),
-      ...detectProximityAndDepth(probe),
-      ...detectRadio(probe),
-      ...detectBiometric(probe),
-      ...detectVitals(probe),
-      ...detectSystemHardware(probe),
-      ...detectAudioVisual(probe),
-    ];
-    _reports = _orderedByCatalog(all);
-    _ready = true;
-    sw.stop();
-    _lastDuration = sw.elapsed;
+    await Profiler.trace('sensors.detectAll', (trace) async {
+      final Stopwatch sw = Stopwatch()..start();
+      final TraceStep? probeStep = trace?.begin('sensors.probe');
+      final NativeProbe probe = await _probe();
+      probeStep?.op(probe.sensors.length);
+      probeStep?.end();
+
+      final TraceStep? motionStep = trace?.begin('sensors.detect.motion');
+      final List<SensorReport> motion = detectMotion(probe);
+      motionStep?.op(motion.length);
+      motionStep?.end();
+
+      final TraceStep? envStep = trace?.begin('sensors.detect.environment');
+      final List<SensorReport> environment = detectEnvironment(probe);
+      envStep?.op(environment.length);
+      envStep?.end();
+
+      final TraceStep? proxStep = trace?.begin('sensors.detect.proximityDepth');
+      final List<SensorReport> proximity = detectProximityAndDepth(probe);
+      proxStep?.op(proximity.length);
+      proxStep?.end();
+
+      final TraceStep? radioStep = trace?.begin('sensors.detect.radio');
+      final List<SensorReport> radio = detectRadio(probe);
+      radioStep?.op(radio.length);
+      radioStep?.end();
+
+      final TraceStep? bioStep = trace?.begin('sensors.detect.biometric');
+      final List<SensorReport> biometric = detectBiometric(probe);
+      bioStep?.op(biometric.length);
+      bioStep?.end();
+
+      final TraceStep? vitalsStep = trace?.begin('sensors.detect.vitals');
+      final List<SensorReport> vitals = detectVitals(probe);
+      vitalsStep?.op(vitals.length);
+      vitalsStep?.end();
+
+      final TraceStep? sysStep = trace?.begin('sensors.detect.systemHardware');
+      final List<SensorReport> system = detectSystemHardware(probe);
+      sysStep?.op(system.length);
+      sysStep?.end();
+
+      final TraceStep? avStep = trace?.begin('sensors.detect.audioVisual');
+      final List<SensorReport> audioVisual = detectAudioVisual(probe);
+      avStep?.op(audioVisual.length);
+      avStep?.end();
+
+      final List<SensorReport> all = <SensorReport>[
+        ...motion,
+        ...environment,
+        ...proximity,
+        ...radio,
+        ...biometric,
+        ...vitals,
+        ...system,
+        ...audioVisual,
+      ];
+      final TraceStep? orderStep = trace?.begin('sensors.orderedByCatalog');
+      _reports = _orderedByCatalog(all);
+      orderStep?.op(all.length);
+      orderStep?.end();
+
+      _ready = true;
+      sw.stop();
+      _lastDuration = sw.elapsed;
+      Profiler.count('sensors.detected', all.length);
+    });
   }
 
   Future<NativeProbe> _probe() async {
@@ -199,18 +251,21 @@ class SensorAvailabilityService {
   }
 
   Future<T?> _probeValue<T>(String label, Future<T?> future) async {
-    try {
-      return await future.timeout(
-        _kNativeProbeTimeout,
-        onTimeout: () {
-          debugPrint('Native sensor probe timed out: $label');
-          return null;
-        },
-      );
-    } on Object catch (e) {
-      debugPrint('Native sensor probe failed: $label $e');
-      return null;
-    }
+    return Profiler.span('sensors.probe.$label', () async {
+      Profiler.count('sensors.probe.calls', 1);
+      try {
+        return await future.timeout(
+          _kNativeProbeTimeout,
+          onTimeout: () {
+            debugPrint('Native sensor probe timed out: $label');
+            return null;
+          },
+        );
+      } on Object catch (e) {
+        debugPrint('Native sensor probe failed: $label $e');
+        return null;
+      }
+    });
   }
 
   bool _isPlatformSupported() {

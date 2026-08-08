@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
@@ -80,45 +81,47 @@ class SttService extends ChangeNotifier {
 
     _setStatus(SttStatus.initializing);
 
-    try {
-      final available = await _speech.initialize(
-        onError: _onError,
-        onStatus: _onStatus,
-      );
+    return Profiler.span('stt.initialize', () async {
+      try {
+        final available = await _speech.initialize(
+          onError: _onError,
+          onStatus: _onStatus,
+        );
 
-      if (!available) {
-        _setStatus(SttStatus.unavailable);
-        _lastError = 'Speech recognition is not available on this device.';
+        if (!available) {
+          _setStatus(SttStatus.unavailable);
+          _lastError = 'Speech recognition is not available on this device.';
+          return false;
+        }
+
+        // Resolve Arabic locale from system.
+        _arabicLocale = _resolveArabicLocale();
+
+        // Try to find the best matching locale from the engine's supported list.
+        final locales = await _speech.locales();
+        final arMatch = locales.where((l) => l.localeId.startsWith('ar_')).toList();
+        if (arMatch.isNotEmpty) {
+          // Prefer system match, otherwise take the first available Arabic locale.
+          final systemCountry = _arabicLocale.replaceFirst('ar-', 'ar_');
+          final exact = arMatch.where((l) => l.localeId == systemCountry).toList();
+          if (exact.isNotEmpty) {
+            _arabicLocale = exact.first.localeId.replaceFirst('_', '-');
+          } else {
+            _arabicLocale = arMatch.first.localeId.replaceFirst('_', '-');
+          }
+        }
+
+        _initialized = true;
+        _setStatus(SttStatus.idle);
+        debugPrint('[SttService] Initialized. Arabic locale: $_arabicLocale');
+        return true;
+      } catch (e) {
+        _lastError = e.toString();
+        _setStatus(SttStatus.error);
+        debugPrint('[SttService] Init failed: $e');
         return false;
       }
-
-      // Resolve Arabic locale from system.
-      _arabicLocale = _resolveArabicLocale();
-
-      // Try to find the best matching locale from the engine's supported list.
-      final locales = await _speech.locales();
-      final arMatch = locales.where((l) => l.localeId.startsWith('ar_')).toList();
-      if (arMatch.isNotEmpty) {
-        // Prefer system match, otherwise take the first available Arabic locale.
-        final systemCountry = _arabicLocale.replaceFirst('ar-', 'ar_');
-        final exact = arMatch.where((l) => l.localeId == systemCountry).toList();
-        if (exact.isNotEmpty) {
-          _arabicLocale = exact.first.localeId.replaceFirst('_', '-');
-        } else {
-          _arabicLocale = arMatch.first.localeId.replaceFirst('_', '-');
-        }
-      }
-
-      _initialized = true;
-      _setStatus(SttStatus.idle);
-      debugPrint('[SttService] Initialized. Arabic locale: $_arabicLocale');
-      return true;
-    } catch (e) {
-      _lastError = e.toString();
-      _setStatus(SttStatus.error);
-      debugPrint('[SttService] Init failed: $e');
-      return false;
-    }
+    });
   }
 
   // ── Listening ───────────────────────────────────────────────────────────────
@@ -149,41 +152,48 @@ class SttService extends ChangeNotifier {
         ? _arabicLocale.replaceFirst('-', '_')
         : 'en_US';
 
-    try {
-      _speech.listen(
-        onResult: (SpeechRecognitionResult result) {
-          _currentWords = result.recognizedWords;
-          if (result.finalResult) {
-            _finalWords = result.recognizedWords;
-          }
-          notifyListeners();
-          onResult?.call(result.recognizedWords, result.finalResult);
-        },
-        localeId: localeId,
-        listenMode: ListenMode.dictation,
-        cancelOnError: true,
-        partialResults: true,
-      );
-      _setStatus(SttStatus.listening);
-      return true;
-    } catch (e) {
-      _lastError = e.toString();
-      _setStatus(SttStatus.error);
-      debugPrint('[SttService] startListening failed: $e');
-      return false;
-    }
+    return Profiler.span('stt.startListening', () async {
+      try {
+        _speech.listen(
+          onResult: (SpeechRecognitionResult result) {
+            _currentWords = result.recognizedWords;
+            if (result.finalResult) {
+              _finalWords = result.recognizedWords;
+              Profiler.count('stt.finalWords', _finalWords.length);
+            }
+            notifyListeners();
+            onResult?.call(result.recognizedWords, result.finalResult);
+          },
+          localeId: localeId,
+          listenMode: ListenMode.dictation,
+          cancelOnError: true,
+          partialResults: true,
+        );
+        _setStatus(SttStatus.listening);
+        return true;
+      } catch (e) {
+        _lastError = e.toString();
+        _setStatus(SttStatus.error);
+        debugPrint('[SttService] startListening failed: $e');
+        return false;
+      }
+    });
   }
 
   /// Stops listening and finalizes the current transcription.
   Future<void> stopListening() async {
     if (!_speech.isListening) return;
-    await _speech.stop();
+    await Profiler.span('stt.stopListening', () async {
+      await _speech.stop();
+    });
     _setStatus(SttStatus.idle);
   }
 
   /// Cancels listening without finalizing.
   Future<void> cancel() async {
-    await _speech.cancel();
+    await Profiler.span('stt.cancel', () async {
+      await _speech.cancel();
+    });
     _currentWords = '';
     _setStatus(SttStatus.idle);
   }

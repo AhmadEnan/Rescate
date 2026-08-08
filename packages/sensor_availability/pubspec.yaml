@@ -9,6 +9,8 @@ environment:
 
 dependencies:
   collection: ^1.19.1
+  dev_profiler:
+    path: ../dev_profiler
   flutter:
     sdk: flutter
 

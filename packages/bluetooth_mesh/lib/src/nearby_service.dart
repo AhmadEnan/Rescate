@@ -1,6 +1,7 @@
 // TODO(security): wire Ed25519 ephemeral identity per CONTRIBUTING.md
 import 'dart:convert';
 import 'dart:math';
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -72,14 +73,16 @@ class NearbyService extends ChangeNotifier {
   Future<void> startAdvertising() async {
     if (_isAdvertising) return;
     try {
-      await _nearby.startAdvertising(
-        _userName,
-        Strategy.P2P_CLUSTER,
-        serviceId: _serviceId,
-        onConnectionInitiated: _onConnectionInit,
-        onConnectionResult: _onConnectionResult,
-        onDisconnected: _onDisconnected,
-      );
+      await Profiler.span('mesh.startAdvertising', () async {
+        await _nearby.startAdvertising(
+          _userName,
+          Strategy.P2P_CLUSTER,
+          serviceId: _serviceId,
+          onConnectionInitiated: _onConnectionInit,
+          onConnectionResult: _onConnectionResult,
+          onDisconnected: _onDisconnected,
+        );
+      });
       _isAdvertising = true;
       notifyListeners();
     } catch (e) {
@@ -89,7 +92,9 @@ class NearbyService extends ChangeNotifier {
 
   Future<void> stopAdvertising() async {
     try {
-      await _nearby.stopAdvertising();
+      await Profiler.span('mesh.stopAdvertising', () async {
+        await _nearby.stopAdvertising();
+      });
     } catch (_) {}
     _isAdvertising = false;
     notifyListeners();
@@ -99,21 +104,24 @@ class NearbyService extends ChangeNotifier {
   Future<void> startDiscovery() async {
     if (_isDiscovering) return;
     try {
-      await _nearby.startDiscovery(
-        _userName,
-        Strategy.P2P_CLUSTER,
-        serviceId: _serviceId,
-        onEndpointFound: (String id, String name, String serviceId) {
-          _discoveredDevices[id] = name;
-          notifyListeners();
-        },
-        onEndpointLost: (String? id) {
-          if (id != null) {
-            _discoveredDevices.remove(id);
+      await Profiler.span('mesh.startDiscovery', () async {
+        await _nearby.startDiscovery(
+          _userName,
+          Strategy.P2P_CLUSTER,
+          serviceId: _serviceId,
+          onEndpointFound: (String id, String name, String serviceId) {
+            _discoveredDevices[id] = name;
+            Profiler.count('mesh.endpoints.found', 1);
             notifyListeners();
-          }
-        },
-      );
+          },
+          onEndpointLost: (String? id) {
+            if (id != null) {
+              _discoveredDevices.remove(id);
+              notifyListeners();
+            }
+          },
+        );
+      });
       _isDiscovering = true;
       notifyListeners();
     } catch (e) {
@@ -123,7 +131,9 @@ class NearbyService extends ChangeNotifier {
 
   Future<void> stopDiscovery() async {
     try {
-      await _nearby.stopDiscovery();
+      await Profiler.span('mesh.stopDiscovery', () async {
+        await _nearby.stopDiscovery();
+      });
     } catch (_) {}
     _isDiscovering = false;
     notifyListeners();
@@ -147,10 +157,13 @@ class NearbyService extends ChangeNotifier {
   // ── Send a text message ────────────────────────────────────
   Future<void> sendMessage(String endpointId, String text) async {
     try {
-      await _nearby.sendBytesPayload(
-        endpointId,
-        Uint8List.fromList(utf8.encode(text)),
-      );
+      await Profiler.span('mesh.sendMessage', () async {
+        Profiler.count('mesh.bytes.sent', text.length);
+        await _nearby.sendBytesPayload(
+          endpointId,
+          Uint8List.fromList(utf8.encode(text)),
+        );
+      });
     } catch (e) {
       debugPrint('Send error: $e');
     }

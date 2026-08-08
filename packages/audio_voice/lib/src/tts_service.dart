@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -47,49 +48,51 @@ class TtsService extends ChangeNotifier {
 
   Future<void> _init() async {
     try {
-      _tts = FlutterTts();
+      await Profiler.span('tts.initialize', () async {
+        _tts = FlutterTts();
 
-      // Use the best available engine quality.
-      if (Platform.isAndroid) {
-        await _tts!.setQueueMode(1); // QUEUE_ADD so calls don't clobber each other
-        // Prefer the highest quality voice synthesis.
-        final engines = await _tts!.getEngines;
-        if (engines is List && engines.isNotEmpty) {
-          debugPrint('[TtsService] Available engines: $engines');
+        // Use the best available engine quality.
+        if (Platform.isAndroid) {
+          await _tts!.setQueueMode(1); // QUEUE_ADD so calls don't clobber each other
+          // Prefer the highest quality voice synthesis.
+          final engines = await _tts!.getEngines;
+          if (engines is List && engines.isNotEmpty) {
+            debugPrint('[TtsService] Available engines: $engines');
+          }
         }
-      }
 
-      // Resolve Arabic locale from the system.
-      _arabicLocale = _resolveArabicLocale();
+        // Resolve Arabic locale from the system.
+        _arabicLocale = _resolveArabicLocale();
 
-      // Set comfortable defaults.
-      await _tts!.setSpeechRate(0.5); // moderate pace
-      await _tts!.setVolume(1.0);
-      await _tts!.setPitch(1.0);
+        // Set comfortable defaults.
+        await _tts!.setSpeechRate(0.5); // moderate pace
+        await _tts!.setVolume(1.0);
+        await _tts!.setPitch(1.0);
 
-      _tts!.setStartHandler(() {
-        _isSpeaking = true;
-        notifyListeners();
+        _tts!.setStartHandler(() {
+          _isSpeaking = true;
+          notifyListeners();
+        });
+
+        _tts!.setCompletionHandler(() {
+          _isSpeaking = false;
+          notifyListeners();
+        });
+
+        _tts!.setCancelHandler(() {
+          _isSpeaking = false;
+          notifyListeners();
+        });
+
+        _tts!.setErrorHandler((msg) {
+          debugPrint('[TtsService] Error: $msg');
+          _isSpeaking = false;
+          notifyListeners();
+        });
+
+        _initialized = true;
+        debugPrint('[TtsService] Initialized. Arabic locale: $_arabicLocale');
       });
-
-      _tts!.setCompletionHandler(() {
-        _isSpeaking = false;
-        notifyListeners();
-      });
-
-      _tts!.setCancelHandler(() {
-        _isSpeaking = false;
-        notifyListeners();
-      });
-
-      _tts!.setErrorHandler((msg) {
-        debugPrint('[TtsService] Error: $msg');
-        _isSpeaking = false;
-        notifyListeners();
-      });
-
-      _initialized = true;
-      debugPrint('[TtsService] Initialized. Arabic locale: $_arabicLocale');
     } catch (e) {
       debugPrint('[TtsService] Init failed: $e');
     }
@@ -117,17 +120,20 @@ class TtsService extends ChangeNotifier {
     final cleaned = _cleanForTts(text);
     if (cleaned.isEmpty) return;
 
-    final locale = isArabic ? _arabicLocale : 'en-US';
-    await _tts!.setLanguage(locale);
+    await Profiler.span('tts.speak', () async {
+      Profiler.count('tts.speak.chars', cleaned.length);
+      final locale = isArabic ? _arabicLocale : 'en-US';
+      await _tts!.setLanguage(locale);
 
-    // On Android, adjust speech rate slightly for Arabic (tends to be faster).
-    if (isArabic) {
-      await _tts!.setSpeechRate(0.45);
-    } else {
-      await _tts!.setSpeechRate(0.5);
-    }
+      // On Android, adjust speech rate slightly for Arabic (tends to be faster).
+      if (isArabic) {
+        await _tts!.setSpeechRate(0.45);
+      } else {
+        await _tts!.setSpeechRate(0.5);
+      }
 
-    await _tts!.speak(cleaned);
+      await _tts!.speak(cleaned);
+    });
   }
 
   /// Stops any in-progress speech.

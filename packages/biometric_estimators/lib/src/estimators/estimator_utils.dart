@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:sensor_availability/sensor_availability.dart';
 
 import '../core/biometric_measurement.dart';
@@ -77,34 +78,37 @@ Future<List<T>> collectWindow<T>(
   CaptureSession session, {
   void Function(T)? onRawSample,
 }) async {
-  final List<T> out = <T>[];
-  final Completer<void> done = Completer<void>();
-  late final StreamSubscription<T> sub;
-  final Stopwatch sw = Stopwatch()..start();
-  sub = stream.listen(
-    (T event) {
-      out.add(event);
-      onRawSample?.call(event);
-      session.emitProgress(sw.elapsedMilliseconds / duration.inMilliseconds);
-      if (sw.elapsed >= duration && !done.isCompleted) {
-        done.complete();
-      }
-    },
-    onError: done.completeError,
-    onDone: () {
-      if (!done.isCompleted) {
-        done.complete();
-      }
-    },
-  );
-  await Future.any(<Future<void>>[
-    done.future,
-    Future<void>.delayed(duration),
-    session.cancelToken,
-  ]);
-  await sub.cancel();
-  session.emitProgress(1);
-  return out;
+  return Profiler.span('dsp.collectWindow', () async {
+    final List<T> out = <T>[];
+    final Completer<void> done = Completer<void>();
+    late final StreamSubscription<T> sub;
+    final Stopwatch sw = Stopwatch()..start();
+    sub = stream.listen(
+      (T event) {
+        out.add(event);
+        onRawSample?.call(event);
+        session.emitProgress(sw.elapsedMilliseconds / duration.inMilliseconds);
+        if (sw.elapsed >= duration && !done.isCompleted) {
+          done.complete();
+        }
+      },
+      onError: done.completeError,
+      onDone: () {
+        if (!done.isCompleted) {
+          done.complete();
+        }
+      },
+    );
+    await Future.any(<Future<void>>[
+      done.future,
+      Future<void>.delayed(duration),
+      session.cancelToken,
+    ]);
+    await sub.cancel();
+    session.emitProgress(1);
+    Profiler.count('dsp.collectWindow.samples', out.length);
+    return out;
+  });
 }
 
 MeasurementStatus statusFromConfidence(double confidence) {
@@ -240,7 +244,11 @@ BiometricMeasurement cardiovascularFromSignal({
   );
 
   // ── Stage 2: detrend ────────────────────────────────────────────────────
-  final List<double> clean = detrendMovingAverage(settled, fs.round());
+  final List<double> clean = Profiler.spanSync('dsp.detrend', () {
+    final out = detrendMovingAverage(settled, fs.round());
+    Profiler.count('dsp.detrend.samples', out.length);
+    return out;
+  });
   final double cleanRms = _rms(clean);
   _diag(session, 'detrend', 'After moving-avg detrend  RMS ${cleanRms.toStringAsFixed(5)}');
 
@@ -249,12 +257,16 @@ BiometricMeasurement cardiovascularFromSignal({
     highHz,
     (fs * 0.45).clamp(lowHz, highHz),
   );
-  final List<double> filtered = Butterworth.bandPass(
-    4,
-    lowHz,
-    nyquistSafeHighHz,
-    fs,
-  ).processAll(clean);
+  final List<double> filtered = Profiler.spanSync('dsp.bandpass', () {
+    final out = Butterworth.bandPass(
+      4,
+      lowHz,
+      nyquistSafeHighHz,
+      fs,
+    ).processAll(clean);
+    Profiler.count('dsp.bandpass.samples', out.length);
+    return out;
+  });
   final double filtRms = _rms(filtered);
   final double filtPeak =
       filtered.isEmpty
@@ -270,11 +282,16 @@ BiometricMeasurement cardiovascularFromSignal({
   );
 
   // ── Stage 4: peak detection ─────────────────────────────────────────────
-  final List<Peak> peaks = detectPeaks(
-    filtered,
-    minDistance: minDistance,
-    prominenceThresholdMad: prominenceThresholdMad,
-  );
+  final List<Peak> peaks = Profiler.spanSync('dsp.peaks', () {
+    final out = detectPeaks(
+      filtered,
+      minDistance: minDistance,
+      prominenceThresholdMad: prominenceThresholdMad,
+    );
+    Profiler.count('dsp.peaks.found', out.length);
+    Profiler.count('dsp.peaks.scanned', filtered.length);
+    return out;
+  });
   _diag(
     session,
     'peaks',
@@ -308,8 +325,12 @@ BiometricMeasurement cardiovascularFromSignal({
   );
 
   // ── Stage 6: frequency fallback ─────────────────────────────────────────
-  final double frequencyHr =
-      dominantFrequency(filtered, fs, lowHz: lowHz, highHz: highHz) * 60;
+  final double frequencyHr = Profiler.spanSync('dsp.freqFallback', () {
+    final out =
+        dominantFrequency(filtered, fs, lowHz: lowHz, highHz: highHz) * 60;
+    Profiler.count('dsp.freqFallback.samples', filtered.length);
+    return out;
+  });
   final double hr = ibiHr > 0 ? ibiHr : frequencyHr;
   if (ibiHr <= 0) {
     _diag(

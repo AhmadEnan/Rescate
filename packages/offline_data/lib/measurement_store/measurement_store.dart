@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:biometric_estimators/biometric_estimators.dart';
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -16,29 +17,32 @@ class MeasurementStore implements BiometricMeasurementRepository {
   final Database _db;
 
   static Future<MeasurementStore> open({String? path}) async {
-    final String dbPath;
-    if (path == inMemoryDatabasePath) {
-      dbPath = inMemoryDatabasePath;
-    } else if (kIsWeb) {
-      // On web path_provider is unavailable; sqflite_common_ffi_web uses
-      // the bare filename as an IndexedDB store name.
-      dbPath = path ?? _kDefaultDbName;
-    } else if (path != null && p.isAbsolute(path)) {
-      dbPath = path;
-    } else {
-      final dir = await getApplicationDocumentsDirectory();
-      dbPath = p.join(dir.path, path ?? _kDefaultDbName);
-    }
-    final Database db = await openDatabase(
-      dbPath,
-      version: 1,
-      onConfigure: (Database db) async {
-        await db.rawQuery('PRAGMA journal_mode=WAL;');
-        await db.rawQuery('PRAGMA synchronous=NORMAL;');
-      },
-      onCreate: _createSchema,
-    );
-    return MeasurementStore._(db);
+    return Profiler.span('db.measurements.open', () async {
+      final String dbPath;
+      if (path == inMemoryDatabasePath) {
+        dbPath = inMemoryDatabasePath;
+      } else if (kIsWeb) {
+        // On web path_provider is unavailable; sqflite_common_ffi_web uses
+        // the bare filename as an IndexedDB store name.
+        dbPath = path ?? _kDefaultDbName;
+      } else if (path != null && p.isAbsolute(path)) {
+        dbPath = path;
+      } else {
+        final dir = await getApplicationDocumentsDirectory();
+        dbPath = p.join(dir.path, path ?? _kDefaultDbName);
+      }
+      final Database db = await openDatabase(
+        dbPath,
+        version: 1,
+        onConfigure: (Database db) async {
+          await db.rawQuery('PRAGMA journal_mode=WAL;');
+          await db.rawQuery('PRAGMA synchronous=NORMAL;');
+        },
+        onCreate: _createSchema,
+      );
+      Profiler.count('db.measurements.open.ops', 1);
+      return MeasurementStore._(db);
+    });
   }
 
   static Future<void> _createSchema(Database db, int version) async {
@@ -65,20 +69,24 @@ class MeasurementStore implements BiometricMeasurementRepository {
 
   @override
   Future<void> insert(BiometricMeasurement measurement) async {
-    final Map<String, dynamic> payload = measurement.toLLMRecord();
-    await _db.insert('measurements', <String, Object?>{
-      'id': const Uuid().v4(),
-      'biometric_id': measurement.id.name,
-      'captured_at': measurement.capturedAt.toUtc().millisecondsSinceEpoch,
-      'duration_ms': measurement.duration.inMilliseconds,
-      'primary_value': measurement.primary?.value,
-      'primary_unit': measurement.primary?.unit,
-      'primary_label': measurement.primary?.label,
-      'confidence': measurement.confidence,
-      'status': measurement.status.name,
-      'payload_json': jsonEncode(payload),
-      'schema_version': BiometricMeasurement.schemaVersion,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return Profiler.span('db.measurements.insert', () async {
+      final Map<String, dynamic> payload = measurement.toLLMRecord();
+      await _db.insert('measurements', <String, Object?>{
+        'id': const Uuid().v4(),
+        'biometric_id': measurement.id.name,
+        'captured_at': measurement.capturedAt.toUtc().millisecondsSinceEpoch,
+        'duration_ms': measurement.duration.inMilliseconds,
+        'primary_value': measurement.primary?.value,
+        'primary_unit': measurement.primary?.unit,
+        'primary_label': measurement.primary?.label,
+        'confidence': measurement.confidence,
+        'status': measurement.status.name,
+        'payload_json': jsonEncode(payload),
+        'schema_version': BiometricMeasurement.schemaVersion,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      Profiler.count('db.measurements.insert.ops', 1);
+      Profiler.count('db.measurements.payload_bytes', payload.length);
+    });
   }
 
   @override
@@ -92,45 +100,54 @@ class MeasurementStore implements BiometricMeasurementRepository {
     BiometricId id, {
     int limit = 50,
   }) async {
-    final List<Map<String, Object?>> rows = await _db.query(
-      'measurements',
-      columns: <String>['payload_json'],
-      where: 'biometric_id = ?',
-      whereArgs: <Object>[id.name],
-      orderBy: 'captured_at DESC',
-      limit: limit,
-    );
-    return rows.map(_measurementFromRow).toList(growable: false);
+    return Profiler.span('db.measurements.historyFor', () async {
+      final List<Map<String, Object?>> rows = await _db.query(
+        'measurements',
+        columns: <String>['payload_json'],
+        where: 'biometric_id = ?',
+        whereArgs: <Object>[id.name],
+        orderBy: 'captured_at DESC',
+        limit: limit,
+      );
+      Profiler.count('db.measurements.rows_read', rows.length);
+      return rows.map(_measurementFromRow).toList(growable: false);
+    });
   }
 
   Future<List<BiometricMeasurement>> recentAll({int limit = 100}) async {
-    final List<Map<String, Object?>> rows = await _db.query(
-      'measurements',
-      columns: <String>['payload_json'],
-      orderBy: 'captured_at DESC',
-      limit: limit,
-    );
-    return rows.map(_measurementFromRow).toList(growable: false);
+    return Profiler.span('db.measurements.recentAll', () async {
+      final List<Map<String, Object?>> rows = await _db.query(
+        'measurements',
+        columns: <String>['payload_json'],
+        orderBy: 'captured_at DESC',
+        limit: limit,
+      );
+      Profiler.count('db.measurements.rows_read', rows.length);
+      return rows.map(_measurementFromRow).toList(growable: false);
+    });
   }
 
   Future<List<Map<String, dynamic>>> exportLLMBundle({DateTime? since}) async {
-    final List<Map<String, Object?>> rows;
-    if (since == null) {
-      rows = await _db.query(
-        'measurements',
-        columns: <String>['payload_json'],
-        orderBy: 'captured_at DESC',
-      );
-    } else {
-      rows = await _db.query(
-        'measurements',
-        columns: <String>['payload_json'],
-        where: 'captured_at >= ?',
-        whereArgs: <Object>[since.toUtc().millisecondsSinceEpoch],
-        orderBy: 'captured_at DESC',
-      );
-    }
-    return rows.map(_payloadFromRow).toList(growable: false);
+    return Profiler.span('db.measurements.exportLLMBundle', () async {
+      final List<Map<String, Object?>> rows;
+      if (since == null) {
+        rows = await _db.query(
+          'measurements',
+          columns: <String>['payload_json'],
+          orderBy: 'captured_at DESC',
+        );
+      } else {
+        rows = await _db.query(
+          'measurements',
+          columns: <String>['payload_json'],
+          where: 'captured_at >= ?',
+          whereArgs: <Object>[since.toUtc().millisecondsSinceEpoch],
+          orderBy: 'captured_at DESC',
+        );
+      }
+      Profiler.count('db.measurements.rows_read', rows.length);
+      return rows.map(_payloadFromRow).toList(growable: false);
+    });
   }
 
   Future<void> close() async {

@@ -12,6 +12,8 @@ dependencies:
     path: ../biometric_estimators
   collection: ^1.19.1      # Sorted collections / LRU helpers
   crypto: ^3.0.6           # SHA-256 for dedup keys
+  dev_profiler:
+    path: ../dev_profiler
   flutter:
     sdk: flutter
   path: ^1.9.1             # p.join() for DB path construction

@@ -3,6 +3,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, compute;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -88,30 +89,33 @@ class VectorStore {
   /// application documents directory. Provide a different name to isolate
   /// test databases from production data.
   static Future<VectorStore> open({String dbName = _kDefaultDbName}) async {
-    final String path;
-    if (dbName == inMemoryDatabasePath) {
-      path = inMemoryDatabasePath;
-    } else if (kIsWeb) {
-      // On web path_provider is unavailable; sqflite_common_ffi_web uses
-      // the bare filename as an IndexedDB store name.
-      path = dbName;
-    } else if (p.isAbsolute(dbName)) {
-      path = dbName;
-    } else {
-      final dir = await getApplicationDocumentsDirectory();
-      path = p.join(dir.path, dbName);
-    }
-    final db = await openDatabase(
-      path,
-      version: 1,
-      onCreate: _createSchema,
-      onConfigure: (db) async {
-        // Enable WAL mode for better concurrent read performance.
-        await db.execute('PRAGMA journal_mode=WAL;');
-        await db.execute('PRAGMA synchronous=NORMAL;');
-      },
-    );
-    return VectorStore._(db);
+    return Profiler.span('db.vectors.open', () async {
+      final String path;
+      if (dbName == inMemoryDatabasePath) {
+        path = inMemoryDatabasePath;
+      } else if (kIsWeb) {
+        // On web path_provider is unavailable; sqflite_common_ffi_web uses
+        // the bare filename as an IndexedDB store name.
+        path = dbName;
+      } else if (p.isAbsolute(dbName)) {
+        path = dbName;
+      } else {
+        final dir = await getApplicationDocumentsDirectory();
+        path = p.join(dir.path, dbName);
+      }
+      final db = await openDatabase(
+        path,
+        version: 1,
+        onCreate: _createSchema,
+        onConfigure: (db) async {
+          // Enable WAL mode for better concurrent read performance.
+          await db.execute('PRAGMA journal_mode=WAL;');
+          await db.execute('PRAGMA synchronous=NORMAL;');
+        },
+      );
+      Profiler.count('db.vectors.open.ops', 1);
+      return VectorStore._(db);
+    });
   }
 
   static Future<void> _createSchema(Database db, int version) async {
@@ -154,15 +158,18 @@ class VectorStore {
   /// Uses `INSERT OR REPLACE` semantics — if an entry with the same `(id,
   /// namespace)` already exists it is overwritten.
   Future<void> upsert(VectorEntry entry) async {
-    try {
-      await _db.insert(
-        'vectors',
-        entry.toRow(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-    } on DatabaseException catch (e) {
-      throw VectorStoreException('upsert failed for id=${entry.id}', cause: e);
-    }
+    return Profiler.span('db.vectors.upsert', () async {
+      try {
+        await _db.insert(
+          'vectors',
+          entry.toRow(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        Profiler.count('db.vectors.upsert.ops', 1);
+      } on DatabaseException catch (e) {
+        throw VectorStoreException('upsert failed for id=${entry.id}', cause: e);
+      }
+    });
   }
 
   /// Inserts or replaces [entries] in a single SQLite transaction.
@@ -171,24 +178,27 @@ class VectorStore {
   /// magnitude faster for bulk ingestion.
   Future<void> upsertBatch(List<VectorEntry> entries) async {
     if (entries.isEmpty) return;
-    try {
-      await _db.transaction((txn) async {
-        final batch = txn.batch();
-        for (final entry in entries) {
-          batch.insert(
-            'vectors',
-            entry.toRow(),
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
-        }
-        await batch.commit(noResult: true);
-      });
-    } on DatabaseException catch (e) {
-      throw VectorStoreException(
-        'upsertBatch failed (${entries.length} entries)',
-        cause: e,
-      );
-    }
+    return Profiler.span('db.vectors.upsertBatch', () async {
+      try {
+        await _db.transaction((txn) async {
+          final batch = txn.batch();
+          for (final entry in entries) {
+            batch.insert(
+              'vectors',
+              entry.toRow(),
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
+          await batch.commit(noResult: true);
+        });
+        Profiler.count('db.vectors.upsert.ops', entries.length);
+      } on DatabaseException catch (e) {
+        throw VectorStoreException(
+          'upsertBatch failed (${entries.length} entries)',
+          cause: e,
+        );
+      }
+    });
   }
 
   /// Removes the entry with the given [id] from [namespace].
@@ -291,18 +301,21 @@ class VectorStore {
   }) async {
     if (queryEmbedding.isEmpty) return [];
 
-    try {
-      final total = await count(namespace: namespace);
-      if (total == 0) return [];
+    return Profiler.span('db.vectors.search', () async {
+      try {
+        final total = await count(namespace: namespace);
+        if (total == 0) return [];
 
-      if (total <= _kIvfThreshold) {
-        return _linearSearch(queryEmbedding, topK, minScore, namespace);
-      } else {
-        return _ivfSearch(queryEmbedding, topK, minScore, namespace);
+        final results = total <= _kIvfThreshold
+            ? await _linearSearch(queryEmbedding, topK, minScore, namespace)
+            : await _ivfSearch(queryEmbedding, topK, minScore, namespace);
+        Profiler.count('db.vectors.search.vectors', total);
+        Profiler.count('db.vectors.search.results', results.length);
+        return results;
+      } on DatabaseException catch (e) {
+        throw VectorStoreException('search failed', cause: e);
       }
-    } on DatabaseException catch (e) {
-      throw VectorStoreException('search failed', cause: e);
-    }
+    });
   }
 
   // ── Linear scan ───────────────────────────────────────────────────────────
@@ -314,43 +327,46 @@ class VectorStore {
     String namespace,
   ) async {
     // Read all embeddings from DB in batches of _kScanBatchSize to bound RAM.
-    final allIds = <String>[];
-    final allEmbeddings = <List<double>>[];
+    return Profiler.span('db.vectors.linear', () async {
+      final allIds = <String>[];
+      final allEmbeddings = <List<double>>[];
 
-    int offset = 0;
-    while (true) {
-      final rows = await _db.query(
-        'vectors',
-        columns: ['id', 'embedding'],
-        where: 'namespace = ?',
-        whereArgs: [namespace],
-        limit: _kScanBatchSize,
-        offset: offset,
-      );
-      if (rows.isEmpty) break;
-      for (final row in rows) {
-        allIds.add(row['id'] as String);
-        final blob = row['embedding'] as Uint8List;
-        final f32 = Float32List.view(blob.buffer, blob.offsetInBytes);
-        allEmbeddings.add(List<double>.generate(f32.length, (i) => f32[i]));
+      int offset = 0;
+      while (true) {
+        final rows = await _db.query(
+          'vectors',
+          columns: ['id', 'embedding'],
+          where: 'namespace = ?',
+          whereArgs: [namespace],
+          limit: _kScanBatchSize,
+          offset: offset,
+        );
+        if (rows.isEmpty) break;
+        for (final row in rows) {
+          allIds.add(row['id'] as String);
+          final blob = row['embedding'] as Uint8List;
+          final f32 = Float32List.view(blob.buffer, blob.offsetInBytes);
+          allEmbeddings.add(List<double>.generate(f32.length, (i) => f32[i]));
+        }
+        offset += rows.length;
+        if (rows.length < _kScanBatchSize) break;
       }
-      offset += rows.length;
-      if (rows.length < _kScanBatchSize) break;
-    }
+      Profiler.count('db.vectors.linear.scanned', allEmbeddings.length);
 
-    // Run cosine similarity in a separate Isolate to keep UI thread free.
-    final encodedResults = await compute(
-      _cosineScanIsolate,
-      _ScanMessage(
-        embeddings: allEmbeddings,
-        query: query,
-        topK: topK,
-        minScore: minScore,
-        ids: allIds,
-      ),
-    );
+      // Run cosine similarity in a separate Isolate to keep UI thread free.
+      final encodedResults = await compute(
+        _cosineScanIsolate,
+        _ScanMessage(
+          embeddings: allEmbeddings,
+          query: query,
+          topK: topK,
+          minScore: minScore,
+          ids: allIds,
+        ),
+      );
 
-    return _fetchResults(encodedResults, namespace);
+      return _fetchResults(encodedResults, namespace);
+    });
   }
 
   /// Isolate entry point — pure function, no DB access.
@@ -457,51 +473,55 @@ class VectorStore {
   }
 
   Future<void> _buildIvfIndex(String namespace) async {
-    final total = await count(namespace: namespace);
-    final k = math.min(math.sqrt(total.toDouble()).ceil(), _kIvfMaxBuckets);
+    return Profiler.span('db.vectors.ivf.build', () async {
+      final total = await count(namespace: namespace);
+      final k = math.min(math.sqrt(total.toDouble()).ceil(), _kIvfMaxBuckets);
 
-    // Load all embeddings for k-means.
-    final rows = await _db.query(
-      'vectors',
-      columns: ['id', 'embedding'],
-      where: 'namespace = ?',
-      whereArgs: [namespace],
-    );
+      // Load all embeddings for k-means.
+      final rows = await _db.query(
+        'vectors',
+        columns: ['id', 'embedding'],
+        where: 'namespace = ?',
+        whereArgs: [namespace],
+      );
 
-    final ids = <String>[];
-    final embeddings = <List<double>>[];
-    for (final row in rows) {
-      ids.add(row['id'] as String);
-      final blob = row['embedding'] as Uint8List;
-      final f32 = Float32List.view(blob.buffer, blob.offsetInBytes);
-      embeddings.add(List<double>.generate(f32.length, (i) => f32[i]));
-    }
-
-    // k-means (10 iterations, random init) — run off-thread.
-    final result = await compute(
-      _kMeansIsolate,
-      _KMeansMessage(embeddings: embeddings, ids: ids, k: k),
-    );
-
-    // Persist centroids and assignments.
-    await _db.transaction((txn) async {
-      final batch = txn.batch();
-      for (var b = 0; b < result.centroids.length; b++) {
-        final f32 = Float32List.fromList(result.centroids[b]);
-        batch.insert('ivf_centroids', {
-          'namespace': namespace,
-          'bucket_id': b,
-          'centroid': f32.buffer.asUint8List(),
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      final ids = <String>[];
+      final embeddings = <List<double>>[];
+      for (final row in rows) {
+        ids.add(row['id'] as String);
+        final blob = row['embedding'] as Uint8List;
+        final f32 = Float32List.view(blob.buffer, blob.offsetInBytes);
+        embeddings.add(List<double>.generate(f32.length, (i) => f32[i]));
       }
-      for (var i = 0; i < ids.length; i++) {
-        batch.insert('ivf_assignments', {
-          'id': ids[i],
-          'namespace': namespace,
-          'bucket_id': result.assignments[i],
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-      }
-      await batch.commit(noResult: true);
+      Profiler.count('db.vectors.ivf.vectors', embeddings.length);
+
+      // k-means (10 iterations, random init) — run off-thread.
+      final result = await compute(
+        _kMeansIsolate,
+        _KMeansMessage(embeddings: embeddings, ids: ids, k: k),
+      );
+
+      // Persist centroids and assignments.
+      await _db.transaction((txn) async {
+        final batch = txn.batch();
+        for (var b = 0; b < result.centroids.length; b++) {
+          final f = Float32List.fromList(result.centroids[b]);
+          batch.insert('ivf_centroids', {
+            'namespace': namespace,
+            'bucket_id': b,
+            'centroid': f.buffer.asUint8List(),
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        for (var i = 0; i < ids.length; i++) {
+          batch.insert('ivf_assignments', {
+            'id': ids[i],
+            'namespace': namespace,
+            'bucket_id': result.assignments[i],
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        await batch.commit(noResult: true);
+      });
+      Profiler.count('db.vectors.ivf.buckets', result.centroids.length);
     });
   }
 

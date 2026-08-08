@@ -9,6 +9,8 @@ environment:
 
 dependencies:
   cryptography: ^2.9.0
+  dev_profiler:
+    path: ../dev_profiler
   flutter:
     sdk: flutter
   path: ^1.9.1

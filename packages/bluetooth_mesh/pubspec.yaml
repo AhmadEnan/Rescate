@@ -8,6 +8,8 @@ environment:
   flutter: ">=3.19.0"
 
 dependencies:
+  dev_profiler:
+    path: ../dev_profiler
   device_info_plus: ^11.0.0
   flutter:
     sdk: flutter
