@@ -40,14 +40,13 @@
   <img src="assets/rescate%20banner.png" alt="Rescate banner" width="100%">
 </p>
 
-<!-- Model download note: placed immediately after the banner so users see it early -->
-<p align="center">
-  <div style="border:2px solid #e74c3c; background:#fff0f0; padding:12px; border-radius:8px; display:inline-block; text-align:left; max-width:720px;">
-    <strong style="color:#c0392b;">⚠️ Model download required</strong><br>
-    The app does not include the on-device LLM model by default to keep the app lightweight. you must download the GGUF model separately from
-    <a href="https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF?show_file_info=gemma-4-E2B-it-Q4_K_M.gguf" target="_blank" rel="noopener">Gemma 4 E2B-it</a>.
-  </div>
-</p>
+> [!IMPORTANT]
+> ### 📦 Model Download Required
+> Rescate operates with full on-device intelligence using **Gemma 4**. To keep the application lightweight, model weights are not bundled by default.
+> 
+> 📥 **Download:** [`gemma-4-E2B-it-Q4_K_M.gguf`](https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF?show_file_info=gemma-4-E2B-it-Q4_K_M.gguf) from Hugging Face before starting local AI inference.
+
+
 
 <table>
   <tr>
