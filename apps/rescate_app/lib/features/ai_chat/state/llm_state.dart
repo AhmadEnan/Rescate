@@ -3,14 +3,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:ai_inference/ai_inference.dart';
 import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../core/providers/demo_state.dart';
 import '../tools/tool_definitions.dart';
 import '../tools/tool_dispatcher.dart';
 
@@ -41,43 +39,48 @@ class ChatMessage {
   });
 
   String text;
+
   /// Model's chain-of-thought emitted inside `<|channel>thought…<channel|>`.
   /// Shown in a collapsible section of the bubble; NEVER injected back into
   /// the LLM prompt on subsequent turns.
   String thoughts;
   final bool isUser;
   bool isStreaming;
+
   /// True while the model is still streaming thought tokens (answer hasn't
   /// started). Used by the UI to keep the thoughts disclosure auto-expanded.
   bool isThinking;
+
   /// Time-to-first-token in ms. Set only for AI messages, after the first token arrives.
   int? ttftMs;
+
   /// Total wall-clock time from sendMessage to stream-done in ms. AI messages only.
   int? totalMs;
+
   /// Optional action widget rendered below the bubble (e.g. CPR tutorial button).
   InlineWidgetType inlineWidget;
 
   Map<String, dynamic> toJson() => {
-        'text': text,
-        'isUser': isUser,
-        if (thoughts.isNotEmpty) 'thoughts': thoughts,
-        if (ttftMs != null) 'ttftMs': ttftMs,
-        if (totalMs != null) 'totalMs': totalMs,
-        if (inlineWidget != InlineWidgetType.none)
-          'inlineWidget': inlineWidget.name,
-      };
+    'text': text,
+    'isUser': isUser,
+    if (thoughts.isNotEmpty) 'thoughts': thoughts,
+    if (ttftMs != null) 'ttftMs': ttftMs,
+    if (totalMs != null) 'totalMs': totalMs,
+    if (inlineWidget != InlineWidgetType.none)
+      'inlineWidget': inlineWidget.name,
+  };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
-        text: json['text'] as String? ?? '',
-        isUser: json['isUser'] as bool? ?? false,
-        thoughts: json['thoughts'] as String? ?? '',
-        ttftMs: json['ttftMs'] as int?,
-        totalMs: json['totalMs'] as int?,
-        inlineWidget: InlineWidgetType.values.firstWhere(
-          (e) => e.name == (json['inlineWidget'] as String?),
-          orElse: () => InlineWidgetType.none,
-        ),
-      );
+    text: json['text'] as String? ?? '',
+    isUser: json['isUser'] as bool? ?? false,
+    thoughts: json['thoughts'] as String? ?? '',
+    ttftMs: json['ttftMs'] as int?,
+    totalMs: json['totalMs'] as int?,
+    inlineWidget: InlineWidgetType.values.firstWhere(
+      (e) => e.name == (json['inlineWidget'] as String?),
+      orElse: () => InlineWidgetType.none,
+    ),
+  );
 }
 
 class Conversation {
@@ -96,22 +99,22 @@ class Conversation {
   final List<ChatMessage> messages;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'createdAt': createdAt,
-        'updatedAt': updatedAt,
-        'title': title,
-        'messages': messages.map((m) => m.toJson()).toList(),
-      };
+    'id': id,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+    'title': title,
+    'messages': messages.map((m) => m.toJson()).toList(),
+  };
 
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
-        id: json['id'] as String,
-        createdAt: json['createdAt'] as int,
-        updatedAt: json['updatedAt'] as int,
-        title: json['title'] as String? ?? 'New chat',
-        messages: (json['messages'] as List<dynamic>? ?? [])
-            .map((e) => ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)))
-            .toList(),
-      );
+    id: json['id'] as String,
+    createdAt: json['createdAt'] as int,
+    updatedAt: json['updatedAt'] as int,
+    title: json['title'] as String? ?? 'New chat',
+    messages: (json['messages'] as List<dynamic>? ?? [])
+        .map((e) => ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList(),
+  );
 }
 
 /// App-wide chat state. Singleton so tab switches / screen disposal can't
@@ -137,10 +140,7 @@ class LlmState extends ChangeNotifier {
   void attachToolDispatcher(RescateToolDispatcher dispatcher) {
     _toolDispatcher = dispatcher;
     LlmService.instance.attachToolRegistry(
-      ToolRegistry(
-        schemas: kRescateTools,
-        executor: dispatcher.dispatch,
-      ),
+      ToolRegistry(schemas: kRescateTools, executor: dispatcher.dispatch),
     );
   }
 
@@ -148,16 +148,11 @@ class LlmState extends ChangeNotifier {
 
   LlmStatus get modelStatus => LlmService.instance.status;
   bool get isModelReady => LlmService.instance.isReady;
-  bool get isGenerating =>
-      LlmService.instance.isGenerating || _demoGenerating;
+  bool get isGenerating => LlmService.instance.isGenerating;
   String? get loadedModelPath => LlmService.instance.loadedModelPath;
   String? get modelError => LlmService.instance.lastError;
 
-  /// True when either a real model is loaded OR demo mode is on.
-  bool get canChat =>
-      DemoState.instance.isDemoMode || LlmService.instance.isReady;
-
-  bool _demoGenerating = false;
+  bool get canChat => LlmService.instance.isReady;
 
   // ── Conversations ──────────────────────────────────────────────────────────
 
@@ -201,7 +196,10 @@ class LlmState extends ChangeNotifier {
   }
 
   Future<void> selectConversation(String id) async {
-    final match = conversations.where((c) => c.id == id).cast<Conversation?>().firstOrNull;
+    final match = conversations
+        .where((c) => c.id == id)
+        .cast<Conversation?>()
+        .firstOrNull;
     if (match == null) return;
     if (isGenerating) {
       _cancelStream();
@@ -264,27 +262,25 @@ class LlmState extends ChangeNotifier {
 
       // Pre-warm RAG chunks in parallel (idempotent — safe to call multiple times).
       unawaited(LegacyRag.initialize());
-      await Profiler.span(
-        'chat.autoLoadModel',
-        () => svc.loadModel(path),
-      );
+      await Profiler.span('chat.autoLoadModel', () => svc.loadModel(path));
     } catch (e) {
       debugPrint('[LlmState] tryAutoLoadModel failed: $e');
     }
   }
 
   Future<void> sendMessage(String text, {bool isArabic = false}) async {
-    final demo = DemoState.instance.isDemoMode;
-    if (!demo && !isModelReady) return;
-    if (isGenerating) return;
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
+    if (!isModelReady) return;
+    if (isGenerating) return;
 
     final convo = activeConversation;
 
     convo.messages.add(ChatMessage(text: trimmed, isUser: true));
     if (convo.title == 'New chat') {
-      convo.title = trimmed.length > 60 ? '${trimmed.substring(0, 60)}…' : trimmed;
+      convo.title = trimmed.length > 60
+          ? '${trimmed.substring(0, 60)}…'
+          : trimmed;
     }
     convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
 
@@ -292,7 +288,8 @@ class LlmState extends ChangeNotifier {
       text: '',
       isUser: false,
       isStreaming: true,
-      // Thinking is always enabled, so we expect a thought block first.
+      // The model may emit a thought channel, but visible answers are always
+      // kept separate from any hidden reasoning.
       isThinking: true,
     );
     convo.messages.add(aiMessage);
@@ -320,6 +317,7 @@ class LlmState extends ChangeNotifier {
       convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
       notifyListeners();
     }
+
     void flushThought() {
       if (thoughtBuffer.isEmpty) return;
       aiMessage.thoughts += thoughtBuffer.toString();
@@ -328,49 +326,31 @@ class LlmState extends ChangeNotifier {
       notifyListeners();
     }
 
-    // ── Demo mode: stream a mock response word-by-word ───────────────────
-    if (demo) {
-      _demoGenerating = true;
-      notifyListeners();
-
-      final response = DemoState.instance.getRandomResponse();
-      final words = response.split(' ');
-      final rng = Random();
-
-      aiMessage.ttftMs = 180 + rng.nextInt(120);
-      Timer(Duration(milliseconds: aiMessage.ttftMs!), () {
-        int i = 0;
-        Timer.periodic(const Duration(milliseconds: 45), (timer) {
-          if (i >= words.length) {
-            timer.cancel();
-            sendSw.stop();
-            aiMessage.totalMs = sendSw.elapsedMilliseconds;
-            aiMessage.isStreaming = false;
-            _demoGenerating = false;
-            convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
-            notifyListeners();
-            unawaited(_persist());
-            return;
-          }
-          aiMessage.text += (i == 0 ? '' : ' ') + words[i];
-          i++;
-          convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
-          notifyListeners();
-        });
-      });
-      return;
-    }
-
     // ── Real model path ──────────────────────────────────────────────────
+    final trace = Profiler.openTrace(
+      'chat.turn',
+      data: <String, Object?>{'lang': isArabic ? 'ar' : 'en'},
+    );
+    final prepareStep = trace?.begin('chat.prepare');
     try {
       final dispatcher = _toolDispatcher;
+      final useTools = dispatcher != null && shouldUseRescateTools(trimmed);
       // Drain any leftover inline-widget signals from a previous turn so they
       // don't bleed into this one.
       dispatcher?.pendingInlineWidgets.clear();
-      final stream = dispatcher != null
-          ? LlmService.instance
-              .generateStreamWithTools(trimmed, isArabic: isArabic)
-          : LlmService.instance.generateStream(trimmed, isArabic: isArabic);
+      prepareStep?.op(1);
+      prepareStep?.end();
+      final stream = useTools
+          ? LlmService.instance.generateStreamWithTools(
+              trimmed,
+              isArabic: isArabic,
+              trace: trace,
+            )
+          : LlmService.instance.generateStream(
+              trimmed,
+              isArabic: isArabic,
+              trace: trace,
+            );
 
       _streamSubscription = stream.listen(
         (tok) {
@@ -390,6 +370,7 @@ class LlmState extends ChangeNotifier {
             final last = text.codeUnitAt(text.length - 1);
             if (flushChars.contains(last) || thoughtBuffer.length >= 16) {
               flushThought();
+              Profiler.count('chat.flush_thought', 1);
             }
           } else {
             // First answer token — the model is done thinking. Flush any
@@ -404,6 +385,7 @@ class LlmState extends ChangeNotifier {
             final last = text.codeUnitAt(text.length - 1);
             if (flushChars.contains(last) || answerBuffer.length >= 16) {
               flushAnswer();
+              Profiler.count('chat.flush_answer', 1);
             }
           }
         },
@@ -413,7 +395,8 @@ class LlmState extends ChangeNotifier {
           // Drain any inline-widget signals raised by tool executors this
           // turn. We keep the first only — multiple signals in one turn are
           // unexpected for MVP.
-          final pending = _toolDispatcher?.pendingInlineWidgets ??
+          final pending =
+              _toolDispatcher?.pendingInlineWidgets ??
               const <PendingInlineWidget>[];
           if (pending.isNotEmpty) {
             aiMessage.inlineWidget = _inlineFromSignal(pending.first.type);
@@ -423,11 +406,16 @@ class LlmState extends ChangeNotifier {
           final total = sendSw.elapsedMilliseconds;
           aiMessage.totalMs = total;
           Profiler.recordSpan('chat.sendMessage', total);
+          final finalizeStep = trace?.begin('chat.finalize');
+          finalizeStep?.op(1);
+          finalizeStep?.end();
+          trace?.end();
           aiMessage.isStreaming = false;
           aiMessage.isThinking = false;
           convo.updatedAt = DateTime.now().millisecondsSinceEpoch;
           notifyListeners();
           unawaited(_persist());
+          unawaited(Profiler.exportJson(label: 'chat_turn'));
         },
         onError: (Object e) {
           flushThought();
@@ -435,6 +423,7 @@ class LlmState extends ChangeNotifier {
           aiMessage.text = 'Error: ${e.toString()}';
           aiMessage.isStreaming = false;
           aiMessage.isThinking = false;
+          trace?.end();
           notifyListeners();
           unawaited(_persist());
         },
@@ -444,6 +433,7 @@ class LlmState extends ChangeNotifier {
       aiMessage.text = 'Error: ${e.toString()}';
       aiMessage.isStreaming = false;
       aiMessage.isThinking = false;
+      trace?.end();
       notifyListeners();
       unawaited(_persist());
     }
@@ -452,57 +442,68 @@ class LlmState extends ChangeNotifier {
   // ── Persistence ────────────────────────────────────────────────────────────
 
   Future<void> _restore() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_kPrefsConversationsKey);
-      if (raw != null && raw.isNotEmpty) {
-        final list = jsonDecode(raw) as List<dynamic>;
-        conversations
-          ..clear()
-          ..addAll(list.map((e) =>
-              Conversation.fromJson(Map<String, dynamic>.from(e as Map))));
-        // Any message marked streaming/thinking on disk wasn't actually still
-        // active — the stream died with the process.
-        for (final c in conversations) {
-          for (final m in c.messages) {
-            m.isStreaming = false;
-            m.isThinking = false;
+    await Profiler.span('chat.restore', () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString(_kPrefsConversationsKey);
+        if (raw != null && raw.isNotEmpty) {
+          final list = jsonDecode(raw) as List<dynamic>;
+          conversations
+            ..clear()
+            ..addAll(
+              list.map(
+                (e) =>
+                    Conversation.fromJson(Map<String, dynamic>.from(e as Map)),
+              ),
+            );
+          // Any message marked streaming/thinking on disk wasn't actually still
+          // active — the stream died with the process.
+          for (final c in conversations) {
+            for (final m in c.messages) {
+              m.isStreaming = false;
+              m.isThinking = false;
+            }
           }
+          Profiler.count('chat.restored_messages', conversations.length);
         }
+        final activeId = prefs.getString(_kPrefsActiveIdKey);
+        if (activeId != null) {
+          final match = conversations
+              .where((c) => c.id == activeId)
+              .cast<Conversation?>()
+              .firstOrNull;
+          if (match != null) _active = match;
+        }
+        _active ??= conversations.isNotEmpty ? conversations.first : null;
+      } catch (e) {
+        debugPrint('[LlmState] restore failed: $e');
+      } finally {
+        _restored = true;
+        notifyListeners();
       }
-      final activeId = prefs.getString(_kPrefsActiveIdKey);
-      if (activeId != null) {
-        final match = conversations
-            .where((c) => c.id == activeId)
-            .cast<Conversation?>()
-            .firstOrNull;
-        if (match != null) _active = match;
-      }
-      _active ??= conversations.isNotEmpty ? conversations.first : null;
-    } catch (e) {
-      debugPrint('[LlmState] restore failed: $e');
-    } finally {
-      _restored = true;
-      notifyListeners();
-    }
+    });
   }
 
   Future<void> _persist() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      // Drop fully-empty draft conversations from disk so we don't pile up.
-      final keep =
-          conversations.where((c) => c.messages.isNotEmpty || c == _active).toList();
-      final encoded = jsonEncode(keep.map((c) => c.toJson()).toList());
-      await prefs.setString(_kPrefsConversationsKey, encoded);
-      if (_active != null) {
-        await prefs.setString(_kPrefsActiveIdKey, _active!.id);
-      } else {
-        await prefs.remove(_kPrefsActiveIdKey);
+    await Profiler.span('chat.persist', () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        // Drop fully-empty draft conversations from disk so we don't pile up.
+        final keep = conversations
+            .where((c) => c.messages.isNotEmpty || c == _active)
+            .toList();
+        final encoded = jsonEncode(keep.map((c) => c.toJson()).toList());
+        Profiler.count('chat.persist.bytes', encoded.length);
+        await prefs.setString(_kPrefsConversationsKey, encoded);
+        if (_active != null) {
+          await prefs.setString(_kPrefsActiveIdKey, _active!.id);
+        } else {
+          await prefs.remove(_kPrefsActiveIdKey);
+        }
+      } catch (e) {
+        debugPrint('[LlmState] persist failed: $e');
       }
-    } catch (e) {
-      debugPrint('[LlmState] persist failed: $e');
-    }
+    });
   }
 
   // ── Internal ───────────────────────────────────────────────────────────────

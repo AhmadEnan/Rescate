@@ -31,39 +31,53 @@ Future<void> main() async {
     // Use WASM SQLite backed by IndexedDB on web.
     databaseFactory = databaseFactoryFfiWeb;
   }
-  try {
-    LlmDefaults.activeProfile = await Profiler.span(
-      'bootstrap.deviceProfile',
-      () => DeviceProfile.detect(),
+  await Profiler.trace('app.bootstrap', (trace) async {
+    final stepProfile = trace?.begin('bootstrap.deviceProfile');
+    try {
+      LlmDefaults.activeProfile = await Profiler.span(
+        'bootstrap.deviceProfile',
+        () => DeviceProfile.detect(),
+      );
+      stepProfile?.op(1);
+    } catch (e) {
+      debugPrint('[main] DeviceProfile.detect failed: $e');
+      LlmDefaults.activeProfile = DeviceProfile.fallback;
+    }
+    stepProfile?.end();
+
+    final stepCache = trace?.begin('bootstrap.mapCache');
+    await Profiler.span('bootstrap.initOfflineMapCache', _initOfflineMapCache);
+    stepCache?.op(1);
+    stepCache?.end();
+    unawaited(_detectSensorsAtStartup());
+
+    final stepPrefs = trace?.begin('bootstrap.sharedPreferences');
+    final prefs = await Profiler.span(
+      'bootstrap.sharedPreferences',
+      () => SharedPreferences.getInstance(),
     );
-  } catch (e) {
-    debugPrint('[main] DeviceProfile.detect failed: $e');
-    LlmDefaults.activeProfile = DeviceProfile.fallback;
-  }
-  await Profiler.span('bootstrap.initOfflineMapCache', _initOfflineMapCache);
-  unawaited(_detectSensorsAtStartup());
+    stepPrefs?.op(1);
+    stepPrefs?.end();
+    final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
 
-  final prefs = await Profiler.span(
-    'bootstrap.sharedPreferences',
-    () => SharedPreferences.getInstance(),
-  );
-  final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
+    // Smart default: disable GPU by default on budget MediaTek/Mali GPUs
+    // which suffer from buggy Vulkan drivers and crash with native SIGSEGVs.
+    final soc = LlmDefaults.activeProfile?.socModel.toLowerCase() ?? '';
+    final isBudgetGpu = soc.contains('g52') ||
+        soc.contains('g72') ||
+        soc.contains('helio') ||
+        soc.contains('mt67');
+    final defaultUseGpu = !isBudgetGpu;
+    LlmDefaults.useGpu = prefs.getBool('ai_chat.use_gpu') ?? defaultUseGpu;
 
-  // Smart default: disable GPU by default on budget MediaTek/Mali GPUs
-  // which suffer from buggy Vulkan drivers and crash with native SIGSEGVs.
-  final soc = LlmDefaults.activeProfile?.socModel.toLowerCase() ?? '';
-  final isBudgetGpu = soc.contains('g52') || 
-                      soc.contains('g72') || 
-                      soc.contains('helio') || 
-                      soc.contains('mt67');
-  final defaultUseGpu = !isBudgetGpu;
-  LlmDefaults.useGpu = prefs.getBool('ai_chat.use_gpu') ?? defaultUseGpu;
-
-  runApp(_BootstrapApp(
-    measurementStore:
-        Profiler.span('bootstrap.openMeasurementStore', () => MeasurementStore.open()),
-    isFirstLaunch: isFirstLaunch,
-  ));
+    runApp(_BootstrapApp(
+      measurementStore: Profiler.span(
+        'bootstrap.openMeasurementStore',
+        () => MeasurementStore.open(),
+      ),
+      isFirstLaunch: isFirstLaunch,
+    ));
+  });
 }
 
 Future<void> _initOfflineMapCache() async {

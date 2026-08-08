@@ -52,3 +52,52 @@ const List<ToolSchema> kRescateTools = <ToolSchema>[
   requestHelpNearbySchema,
   showCprTutorialSchema,
 ];
+
+/// Tool declarations add prompt tokens and should only be sent when the user
+/// is asking for an action the app can perform. Ordinary medical questions use
+/// the plain generation path so the model can start evaluating sooner.
+bool shouldUseRescateTools(String question) {
+  final text = question.toLowerCase();
+  const directToolRequests = <String>[
+    'cpr tutorial',
+    'show cpr',
+    'open cpr',
+    'nearby help',
+    'send help',
+    'request help',
+    'إنعاش',
+    'مساعدة قريبة',
+    'ارسل مساعدة',
+    'اطلب مساعدة',
+  ];
+  if (directToolRequests.any(text.contains)) return true;
+
+  const measurementActions = <String>[
+    'measure',
+    'check my',
+    'take my',
+    'scan my',
+    'read my',
+    'قياس',
+    'قس ',
+    'افحص',
+  ];
+  const measurableVitals = <String>[
+    'heart rate',
+    'blood oxygen',
+    'spo2',
+    'pulse',
+    'temperature',
+    'respiration',
+    'breathing rate',
+    'vitals',
+    'معدل النبض',
+    'نبضي',
+    'الأكسجين',
+    'الاكسجين',
+    'حرارتي',
+    'تنفسي',
+  ];
+  return measurementActions.any(text.contains) &&
+      measurableVitals.any(text.contains);
+}

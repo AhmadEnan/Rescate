@@ -11,7 +11,6 @@ dependencies:
   flutter:
     sdk: flutter
   
-  lucide_icons: any
   google_fonts: ^6.2.1
   
   # Core Modular Packages (Local Dependencies)
@@ -47,6 +46,7 @@ dependencies:
   sensor_availability:
     path: ../../packages/sensor_availability
   permission_handler: ^12.0.1
+  lucide_icons_flutter: ^3.1.15
 
 dev_dependencies:
   flutter_test:
@@ -64,3 +64,16 @@ flutter:
     - assets/learn/cpr/step2/
     - assets/learn/cpr/step3/
     - assets/learn/cpr/step4/
+
+# Keep the complete Android llama.cpp backend matrix available for device
+# experiments. Runtime policy still chooses CPU/Vulkan per device profile; the
+# packaging layer must include every candidate so fallback measurements are
+# meaningful.
+hooks:
+  user_defines:
+    llamadart:
+      llamadart_native_backends:
+        platforms:
+          android-arm64:
+            backends: [cpu, vulkan, opencl]
+            cpu_profile: full

@@ -87,17 +87,77 @@ class MainActivity : FlutterActivity() {
             } else {
                 ""
             }
+            // Detect "big" CPU cores by reading /sys/devices/system/cpu/cpuN/cpufreq/cpuinfo_max_freq.
+            // On big.LITTLE ARM SoCs (basically every modern Android SoC), the
+            // LITTLE cores have a lower max frequency than the big ones. Pre-AnD 13
+            // builds (API 33) are limited to lscpu/sysfs; the new ART helper
+            // (Build.SUPPORTED_ISA_BANDS) only exists on API 35+. Reading sysfs
+            // requires no permission.
+            //
+            // bigCoreCount = number of CPUs whose max freq == the global max.
+            // We always return at least 1 (single-core fallback). Returns 0 only
+            // when sysfs is unavailable — callers treat 0 as "unknown".
+            val bigCoreCount = readBigCoreCount()
             val info: Map<String, Any?> = mapOf(
                 "totalRamMb" to (memInfo.totalMem / (1024L * 1024L)),
                 "availRamMb" to (memInfo.availMem / (1024L * 1024L)),
                 "isLowRamDevice" to activityManager.isLowRamDevice,
                 "socModel" to socModel,
                 "abi" to (Build.SUPPORTED_ABIS.firstOrNull() ?: ""),
+                "bigCoreCount" to bigCoreCount,
             )
             result.success(info)
         } catch (e: Throwable) {
             result.error("DEVICE_PROFILE_ERROR", e.message, null)
         }
+    }
+
+    /// Reads /sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq and returns
+    /// the count of CPUs whose max frequency equals the highest observed freq.
+    /// Returns 0 when no frequency data could be read (host VM, missing sysfs).
+    private fun readBigCoreCount(): Int {
+        var globalMax = -1L
+        var cpuIndex = 0
+        val freqs = mutableListOf<Long>()
+        while (true) {
+            // arm glibc/Android exposes /sys/devices/system/cpu/cpuN/, N starts at 0.
+            // cpu0 is always present. Hotplug offlining exposes holes — we stop on
+            // the first missing cpu directory.
+            val freqFile = File("/sys/devices/system/cpu/cpu$cpuIndex/cpufreq/cpuinfo_max_freq")
+            // Some kernels expose `related_cpus` instead of cpufreq on the LITTLE
+            // side (rare); we read both defensively.
+            val freq = if (freqFile.exists() && freqFile.canRead()) {
+                try {
+                    freqFile.bufferedReader().use { it.readLine().trim().toLong() }
+                } catch (_: Throwable) {
+                    -1L
+                }
+            } else {
+                -1L
+            }
+            // Stop when we've scanned past the last present CPU. We rely on a
+            // contiguous index up to ~16 (no Android device has >16 cores),
+            // accepting a tiny extra I/O for missing hotplugged cores.
+            if (freq < 0 && cpuIndex > 0) {
+                val present = File("/sys/devices/system/cpu/present")
+                // If present=0-7 etc., parse max index. If not readable, bail.
+                val maxPresent = try {
+                    if (present.exists() && present.canRead()) {
+                        present.bufferedReader().use { it.readLine().trim() }
+                            .split('-').last().toIntOrNull() ?: -1
+                    } else -1
+                } catch (_: Throwable) { -1 }
+                if (cpuIndex > maxPresent) break
+            }
+            if (freq > 0) {
+                if (freq > globalMax) globalMax = freq
+                freqs.add(freq)
+            }
+            cpuIndex++
+            if (cpuIndex > 32) break  // hard safety cap
+        }
+        if (globalMax <= 0 || freqs.isEmpty()) return 0
+        return freqs.count { it == globalMax }
     }
 
     private fun prepareRoadGraph(arguments: Any?, result: MethodChannel.Result) {

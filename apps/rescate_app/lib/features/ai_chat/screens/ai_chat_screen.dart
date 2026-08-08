@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:ai_inference/ai_inference.dart';
 import 'package:audio_voice/audio_voice.dart';
 import 'package:offline_data/offline_data.dart';
@@ -152,11 +152,6 @@ class _AiChatScreenState extends State<AiChatScreen>
   }
 
   void _attachVitals(bool isArabic) {
-    final demo = DemoState.instance;
-    if (demo.isDemoMode && demo.readings.isEmpty) {
-      demo.generateMockReadings();
-    }
-
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -209,10 +204,6 @@ class _AiChatScreenState extends State<AiChatScreen>
               _ModelStatusBanner(
                 onSetupTap: _openModelSetup,
                 llmState: _llmState,
-                onToggleDemo: () {
-                  DemoState.instance.toggle();
-                  setState(() {});
-                },
               ),
               _ChatToolbar(
                 onNewChat: _newChat,
@@ -634,74 +625,14 @@ class _ModelStatusBanner extends StatelessWidget {
   const _ModelStatusBanner({
     required this.onSetupTap,
     required this.llmState,
-    required this.onToggleDemo,
   });
 
   final VoidCallback onSetupTap;
   final LlmState llmState;
-  final VoidCallback onToggleDemo;
 
   @override
   Widget build(BuildContext context) {
     final status = llmState.modelStatus;
-    final isDemo = DemoState.instance.isDemoMode;
-
-    // Demo mode banner
-    if (isDemo && status != LlmStatus.ready) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF34C759).withOpacity(0.12),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF34C759).withOpacity(0.3)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF34C759),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Demo Mode — no model needed',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: AppColors.textDark.withOpacity(0.7),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: onToggleDemo,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'OFF',
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryRed,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     // Hide banner when model is ready and generating (or idle after ready).
     if (status == LlmStatus.ready || status == LlmStatus.generating) {
       // Show a slim "model loaded" pill.
@@ -1470,29 +1401,6 @@ class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
                   ),
                 ),
                 const Spacer(),
-                if (readings.isEmpty)
-                  GestureDetector(
-                    onTap: () {
-                      demo.generateMockReadings();
-                      setState(() {});
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryRed.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        'Generate Mock',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primaryRed,
-                        ),
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -1501,7 +1409,7 @@ class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
             Padding(
               padding: const EdgeInsets.all(32),
               child: Text(
-                'No vitals available.\nGenerate mock data or run a test from the Vitals tab.',
+                'No vitals available.\nRun a measurement from the Vitals tab.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 13,

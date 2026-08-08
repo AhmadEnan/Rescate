@@ -9,6 +9,7 @@ plugins {
 
 android {
     namespace = "com.example.rescate_app"
+    println("DEBUG_GRADLE: compileSdkVersion=${flutter.compileSdkVersion}, ndkVersion=${flutter.ndkVersion}, targetSdkVersion=${flutter.targetSdkVersion}")
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 

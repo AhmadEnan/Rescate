@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:offline_data/offline_data.dart';
 import 'package:biometric_estimators/biometric_estimators.dart';
 import '../../../core/theme/app_colors.dart';

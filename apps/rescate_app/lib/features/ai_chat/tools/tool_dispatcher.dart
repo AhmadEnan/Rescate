@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:ai_inference/ai_inference.dart';
 import 'package:biometric_estimators/biometric_estimators.dart';
 import 'package:bluetooth_mesh/bluetooth_mesh.dart';
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/material.dart';
 import 'package:offline_data/offline_data.dart';
 import 'package:sensor_availability/sensor_availability.dart';
@@ -48,22 +49,25 @@ class RescateToolDispatcher {
   };
 
   Future<Map<String, Object?>> dispatch(ToolCall call) async {
-    switch (call.name) {
-      case 'get_biometric':
-        final metric = call.args['metric'] as String?;
-        if (metric == null) {
-          return <String, Object?>{'error': 'missing_metric'};
-        }
-        return _getBiometric(metric);
-      case 'request_help_nearby':
-        final summary = (call.args['case_summary'] as String?) ?? '';
-        final urgency = (call.args['urgency'] as String?) ?? 'urgent';
-        return _requestHelpNearby(summary, urgency);
-      case 'show_cpr_tutorial':
-        return _showCprTutorial();
-      default:
-        return <String, Object?>{'error': 'unknown_tool', 'name': call.name};
-    }
+    return Profiler.span('tool.dispatch.${call.name}', () async {
+      Profiler.count('tool.dispatch.calls', 1);
+      switch (call.name) {
+        case 'get_biometric':
+          final metric = call.args['metric'] as String?;
+          if (metric == null) {
+            return <String, Object?>{'error': 'missing_metric'};
+          }
+          return _getBiometric(metric);
+        case 'request_help_nearby':
+          final summary = (call.args['case_summary'] as String?) ?? '';
+          final urgency = (call.args['urgency'] as String?) ?? 'urgent';
+          return _requestHelpNearby(summary, urgency);
+        case 'show_cpr_tutorial':
+          return _showCprTutorial();
+        default:
+          return <String, Object?>{'error': 'unknown_tool', 'name': call.name};
+      }
+    });
   }
 
   // ── get_biometric ──────────────────────────────────────────────────────────
