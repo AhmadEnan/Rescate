@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -70,12 +71,12 @@ class LoadAttempt {
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'rung': rung,
-        'modelPath': modelPath,
-        'timestampMs': timestampMs,
-        if (note != null) 'note': note,
-        if (backend != null) 'backend': backend,
-      };
+    'rung': rung,
+    'modelPath': modelPath,
+    'timestampMs': timestampMs,
+    if (note != null) 'note': note,
+    if (backend != null) 'backend': backend,
+  };
 
   static LoadAttempt? fromJson(Map<String, Object?> json) {
     final int? rung = (json['rung'] as num?)?.toInt();
@@ -116,7 +117,9 @@ class LlmLoadDiagnostics {
   /// Free-RAM lookup channel. Matches the existing `dev.rescate/device_profile`
   /// channel; the Kotlin handler adds a `getFreeRam` method that returns
   /// `ActivityManager.MemoryInfo.availMem` in MiB.
-  static const MethodChannel _channel = MethodChannel('dev.rescate/device_profile');
+  static const MethodChannel _channel = MethodChannel(
+    'dev.rescate/device_profile',
+  );
 
   // ── File-system helpers ────────────────────────────────────────────────────
 
@@ -173,7 +176,11 @@ class LlmLoadDiagnostics {
       if (await file.exists() && (await file.length()) > _maxLogBytes) {
         await _rotate(file);
       }
-      await file.writeAsString('$stamped\n', mode: FileMode.append, flush: false);
+      await file.writeAsString(
+        '$stamped\n',
+        mode: FileMode.append,
+        flush: false,
+      );
     } catch (_) {
       // Never let logging break loading.
     }
@@ -217,79 +224,84 @@ class LlmLoadDiagnostics {
   /// SAF-virtual paths that exist in the FS view but don't actually
   /// resolve.
   static Future<GgufFileCheck> validateGgufFile(String path) async {
-    if (path.isEmpty) {
-      return const GgufFileCheck(
-        exists: false,
-        sizeBytes: 0,
-        magicOk: false,
-        error: 'empty path',
-      );
-    }
-    final File file = File(path);
-    bool exists;
-    int size = 0;
-    try {
-      exists = await file.exists();
-    } catch (e) {
-      return GgufFileCheck(
-        exists: false,
-        sizeBytes: 0,
-        magicOk: false,
-        error: 'exists() threw: $e',
-      );
-    }
-    if (!exists) {
-      return const GgufFileCheck(
-        exists: false,
-        sizeBytes: 0,
-        magicOk: false,
-        error: 'file not found',
-      );
-    }
-    try {
-      size = await file.length();
-    } catch (e) {
-      return GgufFileCheck(
-        exists: true,
-        sizeBytes: 0,
-        magicOk: false,
-        error: 'length() threw: $e',
-      );
-    }
-    if (size < 16) {
-      return GgufFileCheck(
-        exists: true,
-        sizeBytes: size,
-        magicOk: false,
-        error: 'file too small ($size bytes)',
-      );
-    }
-    try {
-      final RandomAccessFile raf = await file.open();
+    return Profiler.span('llm.load.preflight', () async {
+      Profiler.count('llm.load.preflight.calls', 1);
+      if (path.isEmpty) {
+        return const GgufFileCheck(
+          exists: false,
+          sizeBytes: 0,
+          magicOk: false,
+          error: 'empty path',
+        );
+      }
+      final File file = File(path);
+      bool exists;
+      int size = 0;
       try {
-        final List<int> head = await raf.read(4);
-        final bool magicOk = head.length == 4 &&
-            head[0] == 0x47 && // G
-            head[1] == 0x47 && // G
-            head[2] == 0x55 && // U
-            head[3] == 0x46; // F
+        exists = await file.exists();
+      } catch (e) {
+        return GgufFileCheck(
+          exists: false,
+          sizeBytes: 0,
+          magicOk: false,
+          error: 'exists() threw: $e',
+        );
+      }
+      if (!exists) {
+        return const GgufFileCheck(
+          exists: false,
+          sizeBytes: 0,
+          magicOk: false,
+          error: 'file not found',
+        );
+      }
+      try {
+        size = await file.length();
+      } catch (e) {
+        return GgufFileCheck(
+          exists: true,
+          sizeBytes: 0,
+          magicOk: false,
+          error: 'length() threw: $e',
+        );
+      }
+      if (size < 16) {
         return GgufFileCheck(
           exists: true,
           sizeBytes: size,
-          magicOk: magicOk,
-          error: magicOk ? null : 'bad magic bytes: $head',
+          magicOk: false,
+          error: 'file too small ($size bytes)',
         );
-      } finally {
-        await raf.close();
       }
-    } catch (e) {
-      return GgufFileCheck(
-        exists: true,
-        sizeBytes: size,
-        magicOk: false,
-        error: 'read() threw: $e',
-      );
-    }
+      try {
+        final RandomAccessFile raf = await file.open();
+        try {
+          final List<int> head = await raf.read(4);
+          final bool magicOk =
+              head.length == 4 &&
+              head[0] == 0x47 && // G
+              head[1] == 0x47 && // G
+              head[2] == 0x55 && // U
+              head[3] == 0x46; // F
+          Profiler.count('llm.load.preflight.bytes', size);
+          return GgufFileCheck(
+            exists: true,
+            sizeBytes: size,
+            magicOk: magicOk,
+            error: magicOk ? null : 'bad magic bytes: $head',
+          );
+        } finally {
+          await raf.close();
+        }
+      } catch (e) {
+        return GgufFileCheck(
+          exists: true,
+          sizeBytes: size,
+          magicOk: false,
+          error: 'read() threw: $e',
+        );
+      }
+    });
   }
 
   // ── Free RAM ───────────────────────────────────────────────────────────────
@@ -297,14 +309,18 @@ class LlmLoadDiagnostics {
   /// Fetches the current available RAM in MiB from the platform side. Returns
   /// `0` when the host can't report it (desktop tests, channel missing).
   static Future<int> readFreeRamMb() async {
-    try {
-      final Object? result = await _channel.invokeMethod<Object?>('getFreeRam');
-      if (result is int) return result;
-      if (result is num) return result.toInt();
-      return 0;
-    } catch (_) {
-      return 0;
-    }
+    return Profiler.span('llm.load.readFreeRam', () async {
+      try {
+        final Object? result = await _channel.invokeMethod<Object?>(
+          'getFreeRam',
+        );
+        if (result is int) return result;
+        if (result is num) return result.toInt();
+        return 0;
+      } catch (_) {
+        return 0;
+      }
+    });
   }
 
   // ── LoadAttempt persistence ────────────────────────────────────────────────

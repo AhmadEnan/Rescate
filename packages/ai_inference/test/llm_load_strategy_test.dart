@@ -25,10 +25,14 @@ void main() {
       expect(ladder[2].params.preferredBackend, GpuBackend.vulkan);
       expect(ladder[2].params.gpuLayers, lessThan(100));
 
-      // Rung 3 — CPU-only with q8_0
+      // Rung 3 — CPU-only with q8_0. Context must fit a real turn (~700-token
+      // prompt + up to 1024 generated tokens), and batching must not be
+      // throttled: this rung is the primary path on slow-Vulkan SoCs.
       expect(ladder[3].params.preferredBackend, GpuBackend.cpu);
       expect(ladder[3].params.gpuLayers, 0);
       expect(ladder[3].params.cacheTypeK, KvCacheType.q8_0);
+      expect(ladder[3].params.contextSize, greaterThanOrEqualTo(2048));
+      expect(ladder[3].params.batchSize, 256);
 
       // Rung 4 — last-ditch CPU with q4_0
       expect(ladder[4].params.preferredBackend, GpuBackend.cpu);
@@ -38,6 +42,7 @@ void main() {
     test('low-RAM profile disables mlock at rung 0', () {
       const profile = DeviceProfile(
         cores: 4,
+        bigCores: 2,
         recommendedThreads: 3,
         recommendedBatchThreads: 3,
         totalRamMb: 2048,
@@ -61,6 +66,66 @@ void main() {
     test('points at the first CPU-only rung', () {
       final ladder = buildFallbackLadder(DeviceProfile.fallback);
       expect(ladder[safeModeRungIndex].params.preferredBackend, GpuBackend.cpu);
+    });
+
+    test('firstCpuRungIndex agrees with the constant on a full ladder', () {
+      final ladder = buildFallbackLadder(DeviceProfile.fallback);
+      expect(firstCpuRungIndex(ladder), safeModeRungIndex);
+    });
+  });
+
+  group('slow-Vulkan SoC handling', () {
+    DeviceProfile profileFor(String soc) => DeviceProfile(
+          cores: 8,
+          bigCores: 2,
+          recommendedThreads: 2,
+          recommendedBatchThreads: 6,
+          totalRamMb: 7651,
+          availRamMb: 3216,
+          isLowRam: false,
+          recommendedGpuLayers: 999,
+          recommendedContextSize: 4096,
+          recommendedBatchSize: 256,
+          recommendedMicroBatchSize: 128,
+          cacheTypeK: 'f16',
+          cacheTypeV: 'f16',
+          socModel: soc,
+        );
+
+    test('hasSlowVulkanCompute matches known parts case-insensitively', () {
+      expect(hasSlowVulkanCompute('MT6893'), isTrue);
+      expect(hasSlowVulkanCompute('mt6893'), isTrue);
+      expect(hasSlowVulkanCompute('SM8650'), isFalse);
+      expect(hasSlowVulkanCompute(''), isFalse);
+    });
+
+    test('MT6893 ladder is CPU-only — no Vulkan rungs at all', () {
+      final ladder = buildFallbackLadder(profileFor('MT6893'));
+      expect(ladder, isNotEmpty);
+      for (final rung in ladder) {
+        expect(rung.params.preferredBackend, GpuBackend.cpu);
+        expect(rung.params.gpuLayers, 0);
+      }
+    });
+
+    test('slow-Vulkan ladder starts on a usable context and batch size', () {
+      final ladder = buildFallbackLadder(profileFor('MT6893'));
+      expect(ladder.first.params.contextSize, greaterThanOrEqualTo(2048));
+      expect(ladder.first.params.batchSize, 256);
+    });
+
+    test('firstCpuRungIndex is 0 for an already-CPU-only ladder', () {
+      final ladder = buildFallbackLadder(profileFor('MT6893'));
+      // Guards the crash-collapse / low-RAM jumps: using the literal
+      // safeModeRungIndex here would index past the end of this ladder.
+      expect(firstCpuRungIndex(ladder), 0);
+      expect(safeModeRungIndex, greaterThanOrEqualTo(ladder.length));
+    });
+
+    test('unaffected SoCs keep the full five-rung ladder', () {
+      final ladder = buildFallbackLadder(profileFor('SM8650'));
+      expect(ladder, hasLength(5));
+      expect(ladder.first.params.preferredBackend, GpuBackend.vulkan);
     });
   });
 
