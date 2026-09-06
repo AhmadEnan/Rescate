@@ -1,4 +1,3 @@
-// TODO(security): wire Ed25519 ephemeral identity per CONTRIBUTING.md
 import 'dart:convert';
 import 'dart:math';
 import 'package:dev_profiler/dev_profiler.dart';

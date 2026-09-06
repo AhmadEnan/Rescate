@@ -109,7 +109,7 @@ class _AiChatScreenState extends State<AiChatScreen>
       if (recent.isNotEmpty) {
         contextString = '\n\n[SYSTEM_VITALS_CONTEXT: Recent Vitals - ';
         for (var m in recent) {
-          contextString += '${m.id.name}: ${m.primary?.value?.toStringAsFixed(1)} ${m.primary?.unit}, ';
+          contextString += '${m.id.name}: ${m.primary?.value.toStringAsFixed(1)} ${m.primary?.unit}, ';
         }
         contextString += ']';
       }
@@ -1316,34 +1316,6 @@ class _TypingIndicator extends StatelessWidget {
       }),
     );
   }
-}
-
-// ── Bubble tail ────────────────────────────────────────────────────────────────
-
-class _BubbleTail extends CustomPainter {
-  _BubbleTail(this.color, {required this.isLeft});
-  final Color color;
-  final bool isLeft;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    final path = Path();
-    if (isLeft) {
-      path.moveTo(size.width, 0);
-      path.lineTo(size.width, size.height);
-      path.lineTo(0, size.height);
-    } else {
-      path.moveTo(0, 0);
-      path.lineTo(0, size.height);
-      path.lineTo(size.width, size.height);
-    }
-    path.close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ── Vitals picker bottom sheet ────────────────────────────────────────────────
