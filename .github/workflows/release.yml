@@ -1,4 +1,4 @@
-name: Build & Release APK
+name: Test & Release
 
 on:
   push:
@@ -6,15 +6,19 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+  pull_request:
+    branches: [ "main" ]
 
 permissions:
   contents: write
 
-jobs:
-  build-and-release:
-    name: Build Release APK & Create GitHub Release
-    runs-on: ubuntu-latest
+env:
+  FLUTTER_CHANNEL: stable
 
+jobs:
+  analyze-and-test:
+    name: Analyze & Test Matrix
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,29 +32,118 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      # offline_data tests use sqflite_common_ffi, which dlopens the system
+      # libsqlite3. Preinstalled on ubuntu runners; pinned here for clarity.
+      - name: Install system SQLite (offline_data FFI tests)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libsqlite3-dev
+
+      - name: Install dependencies
+        run: |
+          flutter pub get
+          (cd apps/rescate_app && flutter pub get)
+
+      - name: Analyze (errors and warnings are fatal)
+        run: flutter analyze --fatal-warnings
+
+      - name: Run workspace test matrix
+        run: |
+          set -e
+          echo "::group::Workspace smoke test"
+          flutter test
+          echo "::endgroup::"
+          for pkg in ai_inference biometric_estimators dev_profiler offline_data sensor_availability; do
+            echo "::group::Package tests: $pkg"
+            (cd "packages/$pkg" && flutter test)
+            echo "::endgroup::"
+          done
+          echo "::group::App tests: rescate_app"
+          (cd apps/rescate_app && flutter test)
+          echo "::endgroup::"
+
+  build-and-release:
+    name: Build, Sign & Publish Release
+    needs: analyze-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Install dependencies
         run: |
           flutter pub get
-          cd apps/rescate_app
-          flutter pub get
+          (cd apps/rescate_app && flutter pub get)
 
-      - name: Run workspace tests
-        run: flutter test
+      # Issue #18: a release must never ship with development signing
+      # credentials. Pull requests have no access to the keystore secrets, so
+      # they build a debug-signed artifact for review only and are never
+      # published. Every push/tag run requires the real keystore.
+      - name: Decode release keystore
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Release keystore secrets are missing. Set ANDROID_RELEASE_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD (see CONTRIBUTING.md)."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$HOME/release.keystore"
+          cat > apps/rescate_app/android/key.properties <<EOF
+          storeFile=${{ github.workspace }}/release.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
 
-      - name: Build Release APK
+      - name: Build release APK
         run: |
           cd apps/rescate_app
           flutter build apk --release
 
-      - name: Prepare APK Artifact
+      - name: Verify APK signing
+        run: |
+          APK=apps/rescate_app/build/app/outputs/flutter-apk/app-release.apk
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          CERTS=$("$APKSIGNER" verify --print-certs "$APK")
+          echo "$CERTS"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            if echo "$CERTS" | grep -qi "CN=Android Debug"; then
+              echo "::error::APK is debug-signed; refusing to publish a release build."
+              exit 1
+            fi
+          fi
+
+      - name: Prepare APK artifact
         run: |
           mkdir -p build_output
           cp apps/rescate_app/build/app/outputs/flutter-apk/app-release.apk build_output/rescate-app-release.apk
 
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescate-app-release
+          path: build_output/rescate-app-release.apk
+          retention-days: 14
+
       - name: Set Release Tag
+        if: github.event_name != 'pull_request'
         id: release_info
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
@@ -63,6 +156,7 @@ jobs:
           fi
 
       - name: Publish GitHub Release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
