@@ -15,10 +15,10 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-feature android:name="android.hardware.camera"/>
 
-    <!-- Storage: allow native llama.cpp fopen() to read GGUF files from external storage -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- Storage (issue #9): GGUF models are imported into the app-private
+         files directory via the system file picker, so no broad storage
+         permission is requested or needed. The sandbox path is readable by
+         native llama.cpp without any extra access. -->
     <!-- Android 13+ granular media permissions -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />

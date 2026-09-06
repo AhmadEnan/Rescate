@@ -3,16 +3,16 @@
 import 'dart:io';
 
 import 'package:ai_inference/ai_inference.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../state/model_store.dart';
 
 const String _kPrefsModelPathKey = 'ai_chat.model_path';
-const String _kPrefsBrowserDirKey = 'ai_chat.browser_last_dir';
 
 class ModelSetupScreen extends StatefulWidget {
   const ModelSetupScreen({super.key});
@@ -22,9 +22,13 @@ class ModelSetupScreen extends StatefulWidget {
 }
 
 class _ModelSetupScreenState extends State<ModelSetupScreen> {
-  String? _pickedPath;
+  ImportedModel? _importedModel;
+  List<ImportedModel> _storedModels = const [];
+  String? _migratablePath;
   String? _errorMessage;
   bool _isLoading = false;
+  bool _isImporting = false;
+  double? _importProgress;
   bool _safeMode = false;
   LoadAttempt? _previousAttempt;
   String? _logFilePath;
@@ -35,7 +39,7 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
   void initState() {
     super.initState();
     LlmService.instance.addListener(_onServiceChanged);
-    _restoreLastPath();
+    _loadStoredState();
     _loadDiagnostics();
   }
 
@@ -55,13 +59,42 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
     super.dispose();
   }
 
-  Future<void> _restoreLastPath() async {
+  /// Auto-detects valid sandboxed models at startup and restores the last
+  /// used one. A previously-picked external path (pre-#9 flow) is offered
+  /// for migration instead of being used in place.
+  Future<void> _loadStoredState() async {
     final prefs = await SharedPreferences.getInstance();
+    final models = await ModelStore.instance.detectModels();
     final saved = prefs.getString(_kPrefsModelPathKey);
-    if (saved == null || saved.isEmpty) return;
-    if (!File(saved).existsSync()) return;
+
+    ImportedModel? selected;
+    for (final model in models) {
+      if (model.path == saved) selected = model;
+    }
+
+    String? migratable;
+    if (selected == null && saved != null && saved.isNotEmpty) {
+      // Legacy path from the old Downloads-browser flow. Offer migration
+      // while the file still exists; otherwise it is simply stale.
+      if (File(saved).existsSync() && !saved.startsWith(_sandboxRoot(models))) {
+        migratable = saved;
+      }
+    }
+
     if (!mounted) return;
-    setState(() => _pickedPath = saved);
+    setState(() {
+      _storedModels = models;
+      _importedModel = selected;
+      _migratablePath = migratable;
+    });
+  }
+
+  String _sandboxRoot(List<ImportedModel> models) {
+    if (models.isEmpty) return '/data/';
+    // Any stored model lives under `<support>/models/`; derive the root.
+    final sample = models.first.path;
+    final idx = sample.lastIndexOf('/models/');
+    return idx < 0 ? '/data/' : sample.substring(0, idx);
   }
 
   void _onServiceChanged() {
@@ -73,58 +106,130 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
     }
   }
 
-  Future<bool> _ensureStoragePermission() async {
-    if (!Platform.isAndroid) return true;
-    if (await Permission.manageExternalStorage.isGranted) return true;
-    final status = await Permission.manageExternalStorage.request();
-    if (status.isGranted) return true;
-    setState(() => _errorMessage =
-        'Storage permission denied.\n\n'
-        'Rescate needs "All Files Access" to read the GGUF model in place. '
-        'Please grant it in Android Settings.');
-    return false;
+  /// Opens the system file picker (SAF — no storage permission involved) and
+  /// imports the picked file into the sandbox with streaming copy + hashing.
+  Future<void> _pickAndImportModel() async {
+    setState(() {
+      _errorMessage = null;
+      _isImporting = true;
+      _importProgress = null;
+    });
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        // compression must stay off: the bytes are hashed during import and
+        // must match the original file.
+        compressionQuality: 0,
+        dialogTitle: 'Select a .gguf model',
+      );
+      final pickedPath = result?.files.single.path;
+      final pickedName = result?.files.single.name;
+      if (pickedPath == null) {
+        // User cancelled the picker.
+        return;
+      }
+
+      final model = await ModelStore.instance.importFromTemp(
+        pickedPath,
+        originalName: pickedName,
+        onProgress: (copied, total) {
+          if (!mounted) return true;
+          setState(() => _importProgress = copied / total);
+          return true;
+        },
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPrefsModelPathKey, model.path);
+
+      final models = await ModelStore.instance.detectModels();
+      if (!mounted) return;
+      setState(() {
+        _importedModel = model;
+        _storedModels = models;
+        _migratablePath = null;
+        _errorMessage = null;
+      });
+    } on ModelImportException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        if (e.message != 'cancelled') _errorMessage = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Import failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isImporting = false;
+          _importProgress = null;
+        });
+      }
+    }
   }
 
-  Future<void> _openBrowser() async {
-    setState(() => _errorMessage = null);
-    if (!await _ensureStoragePermission()) return;
+  /// Issue #9 migration: copy a previously-picked external model into the
+  /// sandbox. The original file is left untouched.
+  Future<void> _migrateExternalModel() async {
+    final path = _migratablePath;
+    if (path == null) return;
+    setState(() {
+      _errorMessage = null;
+      _isImporting = true;
+      _importProgress = null;
+    });
+    try {
+      final model = await ModelStore.instance.importFromPath(
+        path,
+        onProgress: (copied, total) {
+          if (!mounted) return true;
+          setState(() => _importProgress = copied / total);
+          return true;
+        },
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPrefsModelPathKey, model.path);
+      final models = await ModelStore.instance.detectModels();
+      if (!mounted) return;
+      setState(() {
+        _importedModel = model;
+        _storedModels = models;
+        _migratablePath = null;
+      });
+    } on ModelImportException catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Migration failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isImporting = false;
+          _importProgress = null;
+        });
+      }
+    }
+  }
 
+  Future<void> _removeModel(ImportedModel model) async {
     final prefs = await SharedPreferences.getInstance();
-    final startDir = prefs.getString(_kPrefsBrowserDirKey) ??
-        '/storage/emulated/0/Download';
-
-    if (!mounted) return;
-    final picked = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (_) => _GgufBrowserScreen(initialDirectory: startDir),
-      ),
-    );
-    if (picked == null) return;
-
-    await prefs.setString(_kPrefsBrowserDirKey, File(picked).parent.path);
+    await ModelStore.instance.deleteModel(model.path);
+    if (prefs.getString(_kPrefsModelPathKey) == model.path) {
+      await prefs.remove(_kPrefsModelPathKey);
+    }
+    final models = await ModelStore.instance.detectModels();
     if (!mounted) return;
     setState(() {
-      _pickedPath = picked;
-      _errorMessage = null;
+      _storedModels = models;
+      if (_importedModel?.path == model.path) _importedModel = null;
     });
   }
 
   Future<void> _loadModel() async {
-    final path = _pickedPath;
-    if (path == null || path.isEmpty) return;
-
-    if (!path.toLowerCase().endsWith('.gguf')) {
-      setState(() => _errorMessage = 'Selected file must end with .gguf');
-      return;
-    }
-
-    if (!await _ensureStoragePermission()) return;
-
-    if (!File(path).existsSync()) {
-      setState(() => _errorMessage =
-          'File not found:\n$path\n\nPick a new model.');
-      return;
-    }
+    final model = _importedModel;
+    if (model == null) return;
+    final path = model.path;
 
     setState(() {
       _isLoading = true;
@@ -150,8 +255,6 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
       }
 
       await LlmService.instance.loadModel(path);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kPrefsModelPathKey, path);
       // _onServiceChanged pops on success.
     } on LlmException catch (e) {
       if (!mounted) return;
@@ -176,8 +279,8 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasPath = _pickedPath != null && _pickedPath!.isNotEmpty;
-    final canLoad = hasPath && !_isLoading;
+    final hasModel = _importedModel != null;
+    final canLoad = hasModel && !_isLoading && !_isImporting;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -207,103 +310,34 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const _InfoCard(
-                      icon: LucideIcons.zap,
-                      title: 'Load in-place — no copy',
+                      icon: LucideIcons.shieldCheck,
+                      title: 'Stored safely in-app',
                       body:
-                          'Browse and pick your .gguf file. The model is read '
-                          'directly from disk; nothing is copied.\n\n'
-                          'Your last choice is remembered, so you only need to '
-                          'browse again to switch models.',
+                          'Pick a .gguf file once — it is copied into Rescate\'s '
+                          'private storage, verified, and checked against your '
+                          'free space. No storage permission is ever requested, '
+                          'and the model stays available offline.',
                     ),
                     const SizedBox(height: 20),
-                    GestureDetector(
-                      onTap: _isLoading ? null : _openBrowser,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 22),
-                        decoration: BoxDecoration(
-                          color: hasPath
-                              ? AppColors.aiAccentPink.withOpacity(0.2)
-                              : AppColors.cardBackground,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: hasPath
-                                ? AppColors.primaryRed
-                                : AppColors.cardBackgroundLight,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              hasPath
-                                  ? LucideIcons.fileCheck
-                                  : LucideIcons.folderOpen,
-                              color: hasPath
-                                  ? AppColors.primaryRed
-                                  : AppColors.textDark.withOpacity(0.4),
-                              size: 24,
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    hasPath
-                                        ? _basename(_pickedPath!)
-                                        : 'Tap to browse for a .gguf file',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 14,
-                                      fontWeight: hasPath
-                                          ? FontWeight.w600
-                                          : FontWeight.w400,
-                                      color: hasPath
-                                          ? AppColors.textDark
-                                          : AppColors.textDark.withOpacity(0.45),
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (hasPath)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(
-                                        _pickedPath!,
-                                        style: GoogleFonts.robotoMono(
-                                          fontSize: 11,
-                                          color: AppColors.textDark
-                                              .withOpacity(0.4),
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            if (hasPath)
-                              IconButton(
-                                tooltip: 'Pick a different model',
-                                onPressed: _isLoading ? null : _openBrowser,
-                                icon: const Icon(
-                                  LucideIcons.refreshCw,
-                                  size: 18,
-                                  color: AppColors.primaryRed,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
+                    _buildModelCard(hasModel),
+                    if (_isImporting) ...[
+                      const SizedBox(height: 16),
+                      _buildImportProgress(),
+                    ],
+                    if (_migratablePath != null) ...[
+                      const SizedBox(height: 16),
+                      _buildMigrationCard(),
+                    ],
+                    if (_storedModels.length > 1) ...[
+                      const SizedBox(height: 16),
+                      _buildStoredModelsList(),
+                    ],
                     const SizedBox(height: 16),
                     if (_previousAttempt != null) _buildPreviousAttemptBanner(),
                     _buildSafeModeToggle(),
                     if (_logFilePath != null) _buildLogPathRow(),
                     const SizedBox(height: 8),
-                    _RecommendedModelsCard(),
+                    const _RecommendedModelsCard(),
                   ],
                 ),
               ),
@@ -315,12 +349,255 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
     );
   }
 
+  Widget _buildModelCard(bool hasModel) {
+    return GestureDetector(
+      onTap: _isLoading || _isImporting ? null : _pickAndImportModel,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+        decoration: BoxDecoration(
+          color: hasModel
+              ? AppColors.aiAccentPink.withOpacity(0.2)
+              : AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: hasModel
+                ? AppColors.primaryRed
+                : AppColors.cardBackgroundLight,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              hasModel ? LucideIcons.fileCheck : LucideIcons.folderOpen,
+              color: hasModel
+                  ? AppColors.primaryRed
+                  : AppColors.textDark.withOpacity(0.4),
+              size: 24,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasModel
+                        ? _importedModel!.fileName
+                        : 'Tap to pick a .gguf model file',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight:
+                          hasModel ? FontWeight.w600 : FontWeight.w400,
+                      color: hasModel
+                          ? AppColors.textDark
+                          : AppColors.textDark.withOpacity(0.45),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (hasModel)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${(_importedModel!.sizeBytes / (1024 * 1024)).toStringAsFixed(0)} MB · '
+                        'stored in app storage',
+                        style: GoogleFonts.robotoMono(
+                          fontSize: 11,
+                          color: AppColors.textDark.withOpacity(0.4),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (hasModel)
+              IconButton(
+                tooltip: 'Pick a different model',
+                onPressed: _isLoading || _isImporting
+                    ? null
+                    : _pickAndImportModel,
+                icon: const Icon(
+                  LucideIcons.refreshCw,
+                  size: 18,
+                  color: AppColors.primaryRed,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImportProgress() {
+    final progress = _importProgress ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: progress <= 0 ? null : progress,
+            minHeight: 6,
+            backgroundColor: AppColors.cardBackgroundLight,
+            color: AppColors.primaryRed,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          progress > 0
+              ? 'Importing and verifying model… ${(progress * 100).toStringAsFixed(0)}%'
+              : 'Importing and verifying model…',
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            color: AppColors.textDark.withOpacity(0.55),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMigrationCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F4FF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF9DB4E8), width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(LucideIcons.arrowDownToLine,
+              color: Color(0xFF3A5BC7), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Move your previous model into app storage',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF2A4390),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'The model picked before this update still lives in shared '
+                  'storage ($_migratablePath). Copy it into Rescate\'s private '
+                  'storage so it works without any storage permission. The '
+                  'original file is not deleted.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: const Color(0xFF2A4390),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 28),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    foregroundColor: const Color(0xFF3A5BC7),
+                  ),
+                  onPressed: _isImporting ? null : _migrateExternalModel,
+                  child: const Text('Copy into app storage'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStoredModelsList() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Stored models',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ..._storedModels.map((model) {
+            final isSelected = model.path == _importedModel?.path;
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                isSelected
+                    ? LucideIcons.fileCheck
+                    : LucideIcons.file,
+                size: 18,
+                color:
+                    isSelected ? AppColors.primaryRed : AppColors.textDark,
+              ),
+              title: Text(
+                model.fileName,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: AppColors.textDark,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!isSelected)
+                    TextButton(
+                      onPressed:
+                          _isLoading || _isImporting
+                              ? null
+                              : () => setState(() {
+                                    _importedModel = model;
+                                  }),
+                      child: const Text('Use'),
+                    ),
+                  IconButton(
+                    tooltip: 'Delete stored model',
+                    icon: Icon(
+                      LucideIcons.trash2,
+                      size: 16,
+                      color: AppColors.textDark.withOpacity(0.45),
+                    ),
+                    onPressed:
+                        _isLoading || _isImporting
+                            ? null
+                            : () => _removeModel(model),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPreviousAttemptBanner() {
     final attempt = _previousAttempt!;
     final bool exhausted = attempt.nextRungAfterCrash >= 5;
     final String body = exhausted
-        ? 'This model failed to load in every fallback configuration on this '
-            'device. Try a smaller quant (e.g. Q4_K_S) or a smaller model.'
+        ? 'The model exceeded what this device can load even at the safest '
+            'configuration. Try a smaller quantisation.'
         : 'The previous load attempt for this model did not finish (rung '
             '${attempt.rung}). The next try will start from a safer '
             'configuration (rung ${attempt.nextRungAfterCrash}).';
@@ -527,236 +804,9 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
       ),
     );
   }
-
-  String _basename(String path) {
-    final sep = path.lastIndexOf(RegExp(r'[/\\]'));
-    return sep < 0 ? path : path.substring(sep + 1);
-  }
 }
 
-// ── Custom GGUF file browser ─────────────────────────────────────────────────
-//
-// Returns the real POSIX path of the selected .gguf file. Uses dart:io
-// directory listing — requires MANAGE_EXTERNAL_STORAGE permission on Android.
-
-class _GgufBrowserScreen extends StatefulWidget {
-  const _GgufBrowserScreen({required this.initialDirectory});
-  final String initialDirectory;
-
-  @override
-  State<_GgufBrowserScreen> createState() => _GgufBrowserScreenState();
-}
-
-class _GgufBrowserScreenState extends State<_GgufBrowserScreen> {
-  late Directory _currentDir;
-  List<FileSystemEntity> _entries = const [];
-  String? _error;
-  bool _loading = true;
-
-  static const String _androidRoot = '/storage/emulated/0';
-
-  @override
-  void initState() {
-    super.initState();
-    _currentDir = Directory(widget.initialDirectory);
-    if (!_currentDir.existsSync()) {
-      _currentDir = Directory(_androidRoot);
-    }
-    _refresh();
-  }
-
-  Future<void> _refresh() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final all = await _currentDir.list(followLinks: false).toList();
-      final filtered = all.where((e) {
-        final name = _basename(e.path);
-        if (name.startsWith('.')) return false;
-        if (e is Directory) return true;
-        if (e is File) return name.toLowerCase().endsWith('.gguf');
-        return false;
-      }).toList()
-        ..sort((a, b) {
-          final aDir = a is Directory;
-          final bDir = b is Directory;
-          if (aDir != bDir) return aDir ? -1 : 1;
-          return _basename(a.path)
-              .toLowerCase()
-              .compareTo(_basename(b.path).toLowerCase());
-        });
-      if (!mounted) return;
-      setState(() {
-        _entries = filtered;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _entries = const [];
-        _error = 'Cannot read this folder:\n$e';
-        _loading = false;
-      });
-    }
-  }
-
-  void _enter(Directory dir) {
-    _currentDir = dir;
-    _refresh();
-  }
-
-  void _goUp() {
-    final parent = _currentDir.parent;
-    if (parent.path == _currentDir.path) return;
-    _currentDir = parent;
-    _refresh();
-  }
-
-  String _basename(String path) {
-    final sep = path.lastIndexOf(RegExp(r'[/\\]'));
-    return sep < 0 ? path : path.substring(sep + 1);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, color: AppColors.primaryRed),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          'Select GGUF model',
-          style: GoogleFonts.inter(
-            color: AppColors.textDark,
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Up one folder',
-            icon: const Icon(LucideIcons.arrowUp, color: AppColors.primaryRed),
-            onPressed: _goUp,
-          ),
-          IconButton(
-            tooltip: 'Storage root',
-            icon: const Icon(LucideIcons.home, color: AppColors.primaryRed),
-            onPressed: () => _enter(Directory(_androidRoot)),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              color: AppColors.cardBackground,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Text(
-                _currentDir.path,
-                style: GoogleFonts.robotoMono(
-                  fontSize: 12,
-                  color: AppColors.textDark.withOpacity(0.7),
-                ),
-              ),
-            ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                      ? Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            _error!,
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              color: AppColors.primaryRed,
-                            ),
-                          ),
-                        )
-                      : _entries.isEmpty
-                          ? Center(
-                              child: Text(
-                                'No folders or .gguf files here.',
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  color: AppColors.textDark.withOpacity(0.5),
-                                ),
-                              ),
-                            )
-                          : ListView.separated(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              itemCount: _entries.length,
-                              separatorBuilder: (_, __) => Divider(
-                                height: 1,
-                                color: AppColors.cardBackgroundLight,
-                              ),
-                              itemBuilder: (_, i) {
-                                final entry = _entries[i];
-                                final isDir = entry is Directory;
-                                return ListTile(
-                                  leading: Icon(
-                                    isDir
-                                        ? LucideIcons.folder
-                                        : LucideIcons.fileText,
-                                    color: isDir
-                                        ? AppColors.primaryRed
-                                        : AppColors.textDark.withOpacity(0.7),
-                                  ),
-                                  title: Text(
-                                    _basename(entry.path),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                      color: AppColors.textDark,
-                                    ),
-                                  ),
-                                  subtitle: isDir
-                                      ? null
-                                      : Text(
-                                          _formatBytes(
-                                              (entry as File).lengthSync()),
-                                          style: GoogleFonts.inter(
-                                            fontSize: 11,
-                                            color: AppColors.textDark
-                                                .withOpacity(0.5),
-                                          ),
-                                        ),
-                                  onTap: () {
-                                    if (isDir) {
-                                      _enter(entry);
-                                    } else {
-                                      Navigator.of(context).pop(entry.path);
-                                    }
-                                  },
-                                );
-                              },
-                            ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
-  }
-}
-
-// ── Info card ──────────────────────────────────────────────────────────────────
+// ── Info card ─────────────────────────────────────────────────────────────────
 
 class _InfoCard extends StatelessWidget {
   const _InfoCard({required this.icon, required this.title, required this.body});
@@ -801,6 +851,8 @@ class _InfoCard extends StatelessWidget {
 // ── Recommended models card ────────────────────────────────────────────────────
 
 class _RecommendedModelsCard extends StatelessWidget {
+  const _RecommendedModelsCard();
+
   @override
   Widget build(BuildContext context) {
     return const _InfoCard(
@@ -811,8 +863,8 @@ class _RecommendedModelsCard extends StatelessWidget {
           '• Gemma 3 1B  — medical-friendly, fast\n'
           '• Llama 3.2 1B  — English / Arabic\n'
           '• Mistral 7B Q4_K_M  — higher quality\n\n'
-          'Place the .gguf file anywhere in your storage (typically '
-          '/storage/emulated/0/Download/), then tap Browse.',
+          'Download the .gguf on your phone, then tap above and pick it — '
+          'it will be copied into Rescate\'s private storage.',
     );
   }
 }
