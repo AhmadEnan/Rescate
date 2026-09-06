@@ -45,8 +45,10 @@ jobs:
           flutter pub get
           (cd apps/rescate_app && flutter pub get)
 
+      # Errors and warnings fail the build; style infos stay non-fatal
+      # (flutter 3.47 treats infos as fatal by default).
       - name: Analyze (errors and warnings are fatal)
-        run: flutter analyze --fatal-warnings
+        run: flutter analyze --no-fatal-infos --fatal-warnings
 
       - name: Run workspace test matrix
         run: |
