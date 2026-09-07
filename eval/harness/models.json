@@ -1,41 +1,28 @@
 {
-  "_comment": "Candidate models for Rescate eval (issue #14 exploration). repo_id/gguf_file are HF references for `huggingface-cli download <repo_id> <gguf_file> --local-dir eval/models/`. Sizes are approximate Q4_K_M. Keep in sync with eval/research/edge-models-2026.md shortlist.",
+  "_comment": "Candidate models for Rescate eval (issue #14 exploration). GGUF files live in eval/models/. RESCATE_EVAL_SERVER_URL points at a running llama-server; the model= name selects gguf_file. Keep in sync with eval/research/edge-models-2026.md shortlist.",
   "gemma-4-e2b-q4km": {
     "repo_id": "unsloth/gemma-4-E2B-it-GGUF",
     "gguf_file": "gemma-4-E2B-it-Q4_K_M.gguf",
     "ctx_size": 4096,
     "note": "current app model — the baseline every candidate must beat"
   },
-  "qwen3-1.7b-q4km": {
-    "repo_id": "Qwen/Qwen3-1.7B-GGUF",
-    "gguf_file": "Qwen3-1.7B-Q4_K_M.gguf",
-    "ctx_size": 4096
-  },
-  "qwen3-4b-q4km": {
-    "repo_id": "Qwen/Qwen3-4B-GGUF",
-    "gguf_file": "Qwen3-4B-Q4_K_M.gguf",
-    "ctx_size": 4096
-  },
-  "gemma-3n-e2b-q4km": {
-    "repo_id": "unsloth/gemma-3n-E2B-it-GGUF",
-    "gguf_file": "gemma-3n-E2B-it-Q4_K_M.gguf",
+  "qwen3.5-2b": {
+    "repo_id": "unsloth/Qwen3.5-2B-GGUF",
+    "gguf_file": "Qwen3.5-2B-UD-Q4_K_XL.gguf",
     "ctx_size": 4096,
-    "note": "check llama.cpp arch support before benchmarking (hybrid attention)"
+    "template": "qwen3.5"
   },
-  "smollm3-3b-q4km": {
-    "repo_id": "ggml-org/SmolLM3-3B-GGUF",
-    "gguf_file": "SmolLM3-3B-Q4_K_M.gguf",
-    "ctx_size": 4096
-  },
-  "falcon-h1-1.5b-q4km": {
-    "repo_id": "llamacpp/Falcon-H1-1.5B-Instruct-GGUF",
-    "gguf_file": "Falcon-H1-1.5B-Instruct-Q4_K_M.gguf",
-    "ctx_size": 4096
-  },
-  "jais-2.8b-q4km": {
-    "repo_id": "core42/jais-family-2p8b",
-    "gguf_file": "jais-family-2p8b.Q4_K_M.gguf",
+  "silma-kashif-2b": {
+    "repo_id": "mradermacher/SILMA-Kashif-2B-Instruct-v1.0-GGUF",
+    "gguf_file": "SILMA-Kashif-2B-Instruct-v1.0.Q4_K_M.gguf",
     "ctx_size": 4096,
-    "note": "Arabic-first family; verify GGUF availability and llama.cpp support"
+    "template": "chatml",
+    "note": "RAG-specialized Arabic model; community Q4_K_M"
+  },
+  "gemma-4-e4b": {
+    "repo_id": "unsloth/gemma-4-E4B-it-GGUF",
+    "gguf_file": "gemma-4-E4B-it-UD-Q4_K_XL.gguf",
+    "ctx_size": 4096,
+    "template": "gemma4"
   }
 }

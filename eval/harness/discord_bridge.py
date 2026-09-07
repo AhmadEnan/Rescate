@@ -46,15 +46,52 @@ def build_backend(model: str, gguf: str | None):
                                  ctx_size=m.get("ctx_size", 4096)))
 
 
-def ask(rag: LegacyRag, backend, question: str, top_k: int = 5, max_tokens: int = 512) -> dict:
+def strip_think(text: str) -> str:
+    """Thinking models (Qwen3.5 etc.) wrap reasoning in <think>...</think>;
+    only the content after the closing tag is the visible answer."""
+    if "</think>" in text:
+        return text.split("</think>", 1)[1].strip()
+    return text.strip()
+
+
+def ask(rag: LegacyRag, backend, question: str, top_k: int = 5, max_tokens: int = 512,
+        model_name: str = "") -> dict:
+    """Retrieve + generate. Template strategy (fair-comparison rule):
+    - Gemma-family models: the app's exact raw prompt (Gemma 4 turn template
+      with fast-thought prefill), via /v1/completions.
+    - Everything else: the same system prompt + same retrieved context, but
+      delivered as chat messages so the model's OWN template from GGUF
+      metadata applies (no foreign markers in the context)."""
+    from rag_mirror.legacy_rag import SYSTEM_PROMPT_EN, SYSTEM_PROMPT_AR
+
     ctx = rag.answer_context(question, top_k=top_k)
-    gen = backend.generate(ctx["prompt"], max_tokens=max_tokens)
+    is_gemma = "gemma" in model_name.lower()
+
+    if is_gemma:
+        gen = backend.generate(ctx["prompt"], max_tokens=max_tokens, use_chat=False)
+    else:
+        arabic = ctx["language"] == "ar"
+        system_prompt = SYSTEM_PROMPT_AR if arabic else SYSTEM_PROMPT_EN
+        # Reuse the exact context block the app would build (from the raw
+        # prompt), minus the Gemma turn markers.
+        prompt = ctx["prompt"]
+        marker = "المرجع الطبي:" if arabic else "MEDICAL REFERENCE:"
+        start = prompt.find(marker)
+        user_body = prompt[start:] if start >= 0 else question
+        # strip the trailing fast-thought prefill marker block if present
+        user_body = user_body.split("<|turn>model")[0]
+        gen = backend.generate(user_body.strip(), max_tokens=max_tokens,
+                               system_prompt=system_prompt, use_chat=True,
+                               enable_thinking=False)
+
     return {
         "question": question,
-        "answer": gen.text.strip(),
+        "answer": strip_think(gen.text).strip(),
+        "raw_answer": gen.text,
         "sources": [c["source"] for c in ctx["chunks"]],
         "scores": [round(c["score"], 1) for c in ctx["chunks"]],
         "language": ctx["language"],
+        "template": "gemma4-raw" if is_gemma else "native-chat",
         "timing": gen.to_dict(),
     }
 
@@ -68,7 +105,7 @@ def format_reply(result: dict) -> str:
     )
 
 
-def poll_once(rag, backend, state_path: Path) -> int:
+def poll_once(rag, backend, state_path: Path, model_name: str = "") -> int:
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state = json.loads(state_path.read_text()) if state_path.exists() else {"seen": []}
     seen = set(state["seen"])
@@ -78,7 +115,7 @@ def poll_once(rag, backend, state_path: Path) -> int:
         mid = msg.get("id") or msg_file.stem
         if mid in seen:
             continue
-        result = ask(rag, backend, msg["text"])
+        result = ask(rag, backend, msg["text"], model_name=model_name)
         out = {
             "id": mid,
             "reply": format_reply(result),
@@ -110,7 +147,8 @@ def main() -> int:
     backend = build_backend(args.model, args.gguf)
 
     if args.oneshot:
-        result = ask(rag, backend, args.oneshot, top_k=args.top_k, max_tokens=args.max_tokens)
+        result = ask(rag, backend, args.oneshot, top_k=args.top_k, max_tokens=args.max_tokens,
+                     model_name=args.model)
         print(format_reply(result))
         save_results(result, f"oneshot_{uuid.uuid4().hex[:8]}")
         return 0
@@ -118,7 +156,7 @@ def main() -> int:
     if args.poll:
         print(f"Serving Discord mirror queue ({args.model}). Ctrl-C to stop.")
         while True:
-            n = poll_once(rag, backend, _REPO / "eval" / "queue" / "state.json")
+            n = poll_once(rag, backend, _REPO / "eval" / "queue" / "state.json", args.model)
             if n:
                 print(f"answered {n} message(s)")
             time.sleep(args.interval)

@@ -78,7 +78,13 @@ class LlamaCppBackend:
 
 
 class OpenAICompatBackend:
-    """Talks to a llama.cpp `llama-server` (or any OpenAI-compatible endpoint)."""
+    """Talks to a llama.cpp `llama-server` (or any OpenAI-compatible endpoint).
+
+    Uses /v1/chat/completions so each model runs through its OWN chat template
+    (from GGUF metadata) — the fair way to compare candidates. The Rescate
+    system prompt + retrieved medical context are injected as messages; the
+    Gemma-specific fast-thought prefill only applies to Gemma-format models.
+    """
 
     def __init__(self, base_url: str, model: str = "default", timeout: float = 600.0):
         import urllib.request
@@ -89,18 +95,42 @@ class OpenAICompatBackend:
         self._urllib = urllib.request
 
     def generate(self, prompt: str, max_tokens: int = 512, stop: list[str] | None = None,
-                 temperature: float = 0.1) -> GenResult:
-        payload = json.dumps({
-            "model": self.model,
-            "prompt": prompt,
-            "max_tokens": max_tokens,
-            "stop": stop or [],
-            "temperature": temperature,
-            "top_p": 0.9,
-            "cache_prompt": True,
-        }).encode()
+                 temperature: float = 0.1, system_prompt: str | None = None,
+                 use_chat: bool = True, enable_thinking: bool | None = None) -> GenResult:
+        if use_chat:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            body = {
+                "model": self.model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": 0.9,
+                "repeat_penalty": 1.1,
+                "cache_prompt": True,
+            }
+            if enable_thinking is not None:
+                # Qwen3/3.5-style thinking toggle (honored by llama-server's
+                # Jinja template application; ignored harmlessly otherwise).
+                body["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
+            payload = json.dumps(body).encode()
+            endpoint = "/v1/chat/completions"
+        else:
+            payload = json.dumps({
+                "model": self.model,
+                "prompt": prompt,
+                "max_tokens": max_tokens,
+                "stop": stop or [],
+                "temperature": temperature,
+                "top_p": 0.9,
+                "cache_prompt": True,
+            }).encode()
+            endpoint = "/v1/completions"
+
         req = self._urllib.Request(
-            f"{self.base_url}/v1/completions", data=payload,
+            f"{self.base_url}{endpoint}", data=payload,
             headers={"Content-Type": "application/json"},
         )
         t0 = time.perf_counter()
@@ -108,9 +138,10 @@ class OpenAICompatBackend:
             body = json.loads(resp.read())
         total_ms = (time.perf_counter() - t0) * 1000
         choice = body["choices"][0]
+        text = choice["message"]["content"] if "message" in choice else choice["text"]
         timings = body.get("timings", {})
         return GenResult(
-            text=choice["text"],
+            text=text or "",
             prompt_tokens=timings.get("prompt_n", body.get("usage", {}).get("prompt_tokens", 0)),
             generated_tokens=timings.get("predicted_n", body.get("usage", {}).get("completion_tokens", 0)),
             prefill_ms=timings.get("prompt_ms", 0.0),

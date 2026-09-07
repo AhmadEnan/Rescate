@@ -82,11 +82,13 @@ def main() -> int:
 
     transcripts, passed, hard_failed = [], 0, 0
     t_start = time.time()
+    from harness.discord_bridge import ask as bridge_ask
     for case in cases:
-        ctx = rag.answer_context(case["question"], top_k=args.top_k)
-        prompt = ctx["prompt"]
-        gen = backend.generate(prompt, max_tokens=args.max_tokens)
-        checks = check_case(case, gen.text)
+        result = bridge_ask(rag, backend, case["question"], top_k=args.top_k,
+                            max_tokens=args.max_tokens, model_name=args.model)
+        answer = result["answer"]
+        gen_timings = result["timing"]
+        checks = check_case(case, answer)
         passed += checks["pass"]
         hard_failed += bool(checks["hard_fails"])
         transcripts.append({
@@ -95,13 +97,15 @@ def main() -> int:
             "category": case.get("category"),
             "oos": case.get("oos", False),
             "question": case["question"],
-            "retrieved_sources": [c["source"] for c in ctx["chunks"]],
-            "answer": gen.text,
+            "retrieved_sources": result["sources"],
+            "answer": answer,
+            "raw_answer": result.get("raw_answer", answer),
+            "template": result["template"],
             "checks": checks,
-            "timing": gen.to_dict(),
+            "timing": gen_timings,
         })
         status = "PASS" if checks["pass"] else ("HARD-FAIL" if checks["hard_fails"] else "soft-fail")
-        print(f"[{status:9}] {case['id']} ({gen.generated_tokens} tok, {gen.total_ms:.0f}ms)")
+        print(f"[{status:9}] {case['id']} ({gen_timings['generated_tokens']} tok, {gen_timings['total_ms']:.0f}ms)", flush=True)
 
     report = {
         "model": args.model,
