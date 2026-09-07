@@ -59,7 +59,7 @@ class MainScreenState extends State<MainScreen> {
             curve: Curves.easeOutCubic,
             offset: _currentIndex == index
                 ? Offset.zero
-                : Offset(0, 1.2), // Slide up from bottom
+                : const Offset(0, 1.2), // Slide up from bottom
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeIn,

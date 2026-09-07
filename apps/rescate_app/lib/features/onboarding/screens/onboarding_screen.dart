@@ -233,10 +233,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     maxHeight: MediaQuery.of(context).size.height * 0.7,
                   ),
                   decoration: BoxDecoration(
-                    color: _OnboardingColors.background.withOpacity(0.85),
+                    color: _OnboardingColors.background.withValues(alpha: 0.85),
                     border: Border(
                       top: BorderSide(
-                        color: Colors.white.withOpacity(0.4),
+                        color: Colors.white.withValues(alpha: 0.4),
                         width: 1.5,
                       ),
                     ),
@@ -251,7 +251,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: _OnboardingColors.textBrown.withOpacity(0.2),
+                          color: _OnboardingColors.textBrown.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -311,7 +311,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           border: Border.all(
             color: isSelected
                 ? _OnboardingColors.textBrown
-                : _OnboardingColors.textBrown.withOpacity(0.2),
+                : _OnboardingColors.textBrown.withValues(alpha: 0.2),
           ),
         ),
         child: Row(
@@ -442,13 +442,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        panelColor1.withOpacity(0.95),
+                        panelColor1.withValues(alpha: 0.95),
                         panelColor2,
                       ],
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 20,
                         offset: const Offset(0, -5),
                       ),
@@ -626,7 +626,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     boxShadow: currentIndex == _pages.length - 1
                         ? [
                             BoxShadow(
-                              color: _pages[currentIndex].textColor.withOpacity(0.3),
+                              color: _pages[currentIndex].textColor.withValues(alpha: 0.3),
                               blurRadius: 16,
                               offset: const Offset(0, 4),
                             )
@@ -713,7 +713,7 @@ class _OnboardingPage extends StatelessWidget {
                   textAlign: isPage3 ? TextAlign.center : TextAlign.start,
                   style: GoogleFonts.poppins(
                     fontSize: 15,
-                    color: data.textColor.withOpacity(0.75),
+                    color: data.textColor.withValues(alpha: 0.75),
                     height: 1.55,
                   ),
                 )
@@ -730,10 +730,10 @@ class _OnboardingPage extends StatelessWidget {
                         vertical: 16,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.4),
+                        color: Colors.white.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: data.textColor.withOpacity(0.15),
+                          color: data.textColor.withValues(alpha: 0.15),
                         ),
                       ),
                       child: Row(

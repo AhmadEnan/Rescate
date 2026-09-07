@@ -125,7 +125,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen>
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 labelColor: Colors.white,
-                unselectedLabelColor: AppColors.textDark.withOpacity(0.6),
+                unselectedLabelColor: AppColors.textDark.withValues(alpha: 0.6),
                 labelStyle: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -194,7 +194,7 @@ class _PillButton extends StatelessWidget {
       child: Container(
         width: 38,
         height: 38,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: AppColors.cardBackground,
           shape: BoxShape.circle,
         ),
@@ -235,7 +235,7 @@ class _SensorsTab extends StatelessWidget {
               'Probing device sensors…',
               style: GoogleFonts.inter(
                 fontSize: 14,
-                color: AppColors.textDark.withOpacity(0.5),
+                color: AppColors.textDark.withValues(alpha: 0.5),
               ),
             ),
           ],
@@ -258,10 +258,10 @@ class _SensorsTab extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryRed.withOpacity(0.1),
+                  color: AppColors.primaryRed.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(LucideIcons.cpu,
+                child: const Icon(LucideIcons.cpu,
                     color: AppColors.primaryRed, size: 28),
               ),
               const SizedBox(width: 16),
@@ -282,7 +282,7 @@ class _SensorsTab extends StatelessWidget {
                         'Probed in ${service.lastDetectionDuration!.inMilliseconds} ms',
                         style: GoogleFonts.inter(
                           fontSize: 12,
-                          color: AppColors.textDark.withOpacity(0.45),
+                          color: AppColors.textDark.withValues(alpha: 0.45),
                         ),
                       ),
                   ],
@@ -303,7 +303,7 @@ class _SensorsTab extends StatelessWidget {
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.4,
-                  color: AppColors.primaryRed.withOpacity(0.7),
+                  color: AppColors.primaryRed.withValues(alpha: 0.7),
                 ),
               ),
             ),
@@ -373,7 +373,7 @@ class _SensorRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.inter(
                     fontSize: 11,
-                    color: AppColors.textDark.withOpacity(0.5),
+                    color: AppColors.textDark.withValues(alpha: 0.5),
                   ),
                 ),
               ],
@@ -384,7 +384,7 @@ class _SensorRow extends StatelessWidget {
             padding:
                 const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.12),
+              color: statusColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -425,7 +425,7 @@ class _TestsTab extends StatelessWidget {
               'Detecting available tests…',
               style: GoogleFonts.inter(
                 fontSize: 14,
-                color: AppColors.textDark.withOpacity(0.5),
+                color: AppColors.textDark.withValues(alpha: 0.5),
               ),
             ),
           ],
@@ -453,7 +453,7 @@ class _TestsTab extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF34C759).withOpacity(0.1),
+                  color: const Color(0xFF34C759).withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(LucideIcons.heartPulse,
@@ -476,7 +476,7 @@ class _TestsTab extends StatelessWidget {
                       '${potentialTests.length} potential · ${unavailableTests.length} unavailable',
                       style: GoogleFonts.inter(
                         fontSize: 12,
-                        color: AppColors.textDark.withOpacity(0.45),
+                        color: AppColors.textDark.withValues(alpha: 0.45),
                       ),
                     ),
                   ],
@@ -488,9 +488,9 @@ class _TestsTab extends StatelessWidget {
         const SizedBox(height: 12),
         // Available tests
         if (availableTests.isNotEmpty) ...[
-          _SectionLabel(
+          const _SectionLabel(
               label: 'READY TO MEASURE',
-              color: const Color(0xFF34C759)),
+              color: Color(0xFF34C759)),
           ...availableTests.map(
             (r) => _TestCard(
               report: r,
@@ -501,7 +501,7 @@ class _TestsTab extends StatelessWidget {
         ],
         // Potential tests
         if (potentialTests.isNotEmpty) ...[
-          _SectionLabel(label: 'MAY BE AVAILABLE', color: Colors.orange),
+          const _SectionLabel(label: 'MAY BE AVAILABLE', color: Colors.orange),
           ...potentialTests.map(
             (r) => _TestCard(
               report: r,
@@ -512,7 +512,7 @@ class _TestsTab extends StatelessWidget {
         ],
         // Unavailable tests
         if (unavailableTests.isNotEmpty) ...[
-          _SectionLabel(label: 'NOT AVAILABLE', color: Colors.grey),
+          const _SectionLabel(label: 'NOT AVAILABLE', color: Colors.grey),
           ...unavailableTests.map(
             (r) => _TestCard(
               report: r,
@@ -559,7 +559,7 @@ class _SectionLabel extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.4,
-          color: color.withOpacity(0.8),
+          color: color.withValues(alpha: 0.8),
         ),
       ),
     );
@@ -617,7 +617,7 @@ class _TestCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: _statusAccent.withOpacity(0.1),
+                  color: _statusAccent.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(_categoryIcon, color: _statusAccent, size: 22),
@@ -642,7 +642,7 @@ class _TestCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.inter(
                         fontSize: 11,
-                        color: AppColors.textDark.withOpacity(0.5),
+                        color: AppColors.textDark.withValues(alpha: 0.5),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -662,7 +662,7 @@ class _TestCard extends StatelessWidget {
                             style: GoogleFonts.inter(
                               fontSize: 9,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.textDark.withOpacity(0.5),
+                              color: AppColors.textDark.withValues(alpha: 0.5),
                             ),
                           ),
                         );
@@ -675,7 +675,7 @@ class _TestCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppColors.primaryRed.withOpacity(0.1),
+                    color: AppColors.primaryRed.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -720,14 +720,14 @@ class _HistoryTab extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(LucideIcons.clipboardList,
-                size: 56, color: AppColors.textDark.withOpacity(0.15)),
+                size: 56, color: AppColors.textDark.withValues(alpha: 0.15)),
             const SizedBox(height: 16),
             Text(
               'No measurements yet',
               style: GoogleFonts.poppins(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textDark.withOpacity(0.4),
+                color: AppColors.textDark.withValues(alpha: 0.4),
               ),
             ),
             const SizedBox(height: 6),
@@ -735,7 +735,7 @@ class _HistoryTab extends StatelessWidget {
               'Run a test from the Tests tab to see results here.',
               style: GoogleFonts.inter(
                 fontSize: 13,
-                color: AppColors.textDark.withOpacity(0.35),
+                color: AppColors.textDark.withValues(alpha: 0.35),
               ),
             ),
           ],
@@ -794,7 +794,7 @@ class _HistoryCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: color, size: 22),
@@ -817,7 +817,7 @@ class _HistoryCard extends StatelessWidget {
                   timeStr,
                   style: GoogleFonts.inter(
                     fontSize: 11,
-                    color: AppColors.textDark.withOpacity(0.45),
+                    color: AppColors.textDark.withValues(alpha: 0.45),
                   ),
                 ),
               ],
@@ -844,7 +844,7 @@ class _HistoryCard extends StatelessWidget {
                     style: GoogleFonts.inter(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textDark.withOpacity(0.45),
+                      color: AppColors.textDark.withValues(alpha: 0.45),
                     ),
                   ),
                 ],
@@ -855,8 +855,8 @@ class _HistoryCard extends StatelessWidget {
                       horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: measurement.confidence > 0.8
-                        ? const Color(0xFF34C759).withOpacity(0.12)
-                        : Colors.orange.withOpacity(0.12),
+                        ? const Color(0xFF34C759).withValues(alpha: 0.12)
+                        : Colors.orange.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -903,7 +903,7 @@ class _GlassCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
