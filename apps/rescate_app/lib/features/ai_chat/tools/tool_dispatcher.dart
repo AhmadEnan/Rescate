@@ -5,16 +5,18 @@
 // LlmService at boot via LlmService.attachToolRegistry.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:ai_inference/ai_inference.dart';
 import 'package:biometric_estimators/biometric_estimators.dart';
-import 'package:bluetooth_mesh/bluetooth_mesh.dart';
 import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/material.dart';
 import 'package:offline_data/offline_data.dart';
+import 'package:security_crypto/security_crypto.dart' show ConsultPayloadType;
 import 'package:sensor_availability/sensor_availability.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../community/services/consult_state.dart';
 
 /// Signal raised by [_showCprTutorial]. Read and drained by [LlmState] when
 /// finalizing the assistant message so the chat screen can render an inline
@@ -202,26 +204,65 @@ class RescateToolDispatcher {
     String summary,
     String urgency,
   ) async {
-    // CLAUDE.md: mesh packets must stay under 100 bytes. The framing
-    // "[Rescate Help · urgency=critical] " is ~33 chars, leaving 67 for
-    // summary; truncate to 70 to keep total close to (or under) 100.
-    final cleanSummary = summary.replaceAll('\n', ' ').trim();
-    final truncated = cleanSummary.length > 70
-        ? '${cleanSummary.substring(0, 67)}...'
-        : cleanSummary;
-    final body = '[Rescate Help · $urgency] $truncated';
-
-    final svc = NearbyService();
-    final peers = svc.connectedDevices.keys.toList(growable: false);
-    if (peers.isEmpty) {
-      return <String, Object?>{'peers_messaged': 0};
+    // Issue #17: help requests go only to badge-verified responders, over
+    // the encrypted consult session, after explicit user consent.
+    final consult = ConsultState.instance;
+    final verifiedIds = consult.verifiedEndpoints.toList(growable: false);
+    if (verifiedIds.isEmpty) {
+      return <String, Object?>{
+        'verified_responders': 0,
+        'status': 'no_verified_responder_in_range',
+        'guidance_for_model':
+            'No verified medical responder is reachable. Continue with '
+            'first-aid guidance and recommend contacting emergency services.',
+      };
     }
-    for (final id in peers) {
-      await svc.sendMessage(id, body);
+
+    final ctx = navKey.currentContext;
+    if (ctx == null) {
+      return <String, Object?>{'error': 'no_navigator'};
+    }
+    final consented = await showDialog<bool>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Request help nearby?'),
+        content: Text(
+          'Send this to ${verifiedIds.length} verified medical responder(s)?\n\n'
+          '"$summary"\n\nUrgency: $urgency',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryRed,
+            ),
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+    if (consented != true) {
+      return <String, Object?>{'declined': true};
+    }
+
+    var sent = 0;
+    for (final id in verifiedIds) {
+      final ok = await consult.sendPayload(
+        id,
+        ConsultPayloadType.text,
+        utf8.encode('[HELP $urgency] $summary'),
+      );
+      if (ok) sent++;
     }
     return <String, Object?>{
-      'peers_messaged': peers.length,
-      'urgency': urgency,
+      'verified_responders': verifiedIds.length,
+      'requests_sent': sent,
+      'status': 'sent',
     };
   }
 

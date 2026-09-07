@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:bluetooth_mesh/bluetooth_mesh.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
 import '../../../core/providers/demo_state.dart';
 import '../../home/widgets/top_bar.dart';
-import 'package:bluetooth_mesh/bluetooth_mesh.dart';
 import 'bt_chat_screen.dart';
+import 'responder_inbox_screen.dart';
+import '../models/case_payload.dart';
+import '../services/consult_state.dart';
 
 class CommunityScreen extends StatefulWidget {
   const CommunityScreen({super.key});
@@ -43,6 +46,11 @@ class _CommunityScreenState extends State<CommunityScreen>
     'Oncologist',
   ];
 
+  bool get _isResponder => ConsultState.instance.isResponderMode;
+  int get _pendingCount => ConsultState.instance.inbox
+      .where((r) => r.status == ConsultRequestStatus.pending)
+      .length;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +60,7 @@ class _CommunityScreenState extends State<CommunityScreen>
     )..repeat();
     _nearby.addListener(_onNearbyChanged);
     _nearby.onConnectionChanged = _handleConnectionChanged;
+    ConsultState.instance.addListener(_onConsultChanged);
     _init();
   }
 
@@ -62,6 +71,10 @@ class _CommunityScreenState extends State<CommunityScreen>
   }
 
   void _onNearbyChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onConsultChanged() {
     if (mounted) setState(() {});
   }
 
@@ -190,6 +203,7 @@ class _CommunityScreenState extends State<CommunityScreen>
   @override
   void dispose() {
     _nearby.removeListener(_onNearbyChanged);
+    ConsultState.instance.removeListener(_onConsultChanged);
     _pulseController.dispose();
     _nameController.dispose();
     super.dispose();
@@ -229,7 +243,9 @@ class _CommunityScreenState extends State<CommunityScreen>
                     child: Align(
                       alignment: AlignmentDirectional.centerStart,
                       child: Text(
-                        isArabic ? 'استشر طبيب' : 'Consult a Doctor',
+                        _isResponder
+                            ? (isArabic ? 'استقبال الاستشارات' : 'Receive Consults')
+                            : (isArabic ? 'استشر طبيب' : 'Consult a Doctor'),
                         style: GoogleFonts.poppins(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
@@ -239,7 +255,86 @@ class _CommunityScreenState extends State<CommunityScreen>
                     ),
                   ),
 
-                  // ── Doctor Specialization Dropdown ────────────
+                  // ── Radio error banner (permissions/adapter) ──
+                  if (_isActive && _nearby.lastError != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                      child: GestureDetector(
+                        onTap: () {
+                          _nearby.stopAll();
+                          _toggleActive(); // retry
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.red, width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(LucideIcons.alertTriangle,
+                                  color: Colors.red, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${_nearby.lastError}\n'
+                                  'Tap to retry — and confirm Nearby '
+                                  'devices + Location permissions are '
+                                  'granted for this app.',
+                                  style: const TextStyle(
+                                      fontSize: 11.5, height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // ── Pending consult requests (responder) ─────
+                  if (_isResponder && _pendingCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                      child: GestureDetector(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                              builder: (_) => const ResponderInboxScreen()),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryRed,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(LucideIcons.inbox,
+                                  size: 20, color: Colors.white),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  '$_pendingCount pending consult '
+                                  '${_pendingCount == 1 ? 'request' : 'requests'}'
+                                  ' — tap to review',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const Icon(LucideIcons.chevronRight,
+                                  size: 18, color: Colors.white),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // ── Doctor Specialization Dropdown (patient side) ──
+                  if (!_isResponder)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
                     child: Container(
@@ -248,7 +343,7 @@ class _CommunityScreenState extends State<CommunityScreen>
                         color: AppColors.cardBackground,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: AppColors.primaryRed.withOpacity(0.15),
+                          color: AppColors.primaryRed.withValues(alpha: 0.15),
                           width: 1,
                         ),
                       ),
@@ -357,7 +452,7 @@ class _CommunityScreenState extends State<CommunityScreen>
                             borderRadius: BorderRadius.circular(18),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primaryRed.withOpacity(0.25),
+                                color: AppColors.primaryRed.withValues(alpha: 0.25),
                                 blurRadius: 16,
                                 offset: const Offset(0, 6),
                               ),
@@ -370,7 +465,9 @@ class _CommunityScreenState extends State<CommunityScreen>
                                   color: Colors.white, size: 22),
                               const SizedBox(width: 10),
                               Text(
-                                isArabic ? 'ابدأ البحث عن أطباء' : 'Go Online — Find Doctors',
+                                _isResponder
+                                    ? (isArabic ? 'ابدأ استقبال المرضى' : 'Go Online — Receive Patients')
+                                    : (isArabic ? 'ابدأ البحث عن أطباء' : 'Go Online — Find Doctors'),
                                 style: GoogleFonts.poppins(
                                   color: Colors.white,
                                   fontSize: 15,
@@ -393,7 +490,7 @@ class _CommunityScreenState extends State<CommunityScreen>
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
+                              color: Colors.black.withValues(alpha: 0.04),
                               blurRadius: 10,
                               offset: const Offset(0, 3),
                             ),
@@ -428,7 +525,9 @@ class _CommunityScreenState extends State<CommunityScreen>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    isArabic ? 'جاري البحث…' : 'Scanning nearby…',
+                                    _isResponder
+                                        ? (isArabic ? 'في انتظار المرضى…' : 'Waiting for patients…')
+                                        : (isArabic ? 'جاري البحث…' : 'Scanning nearby…'),
                                     style: GoogleFonts.poppins(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 13,
@@ -436,10 +535,11 @@ class _CommunityScreenState extends State<CommunityScreen>
                                     ),
                                   ),
                                   Text(
-                                    '${discovered.length + connected.length} ${isArabic ? "مستخدم" : "users found"}',
+                                    '${discovered.length + connected.length} '
+                                    '${isArabic ? "مستخدم" : "users found"}',
                                     style: GoogleFonts.inter(
                                       fontSize: 11,
-                                      color: AppColors.textDark.withOpacity(0.45),
+                                      color: AppColors.textDark.withValues(alpha: 0.45),
                                     ),
                                   ),
                                 ],
@@ -450,7 +550,7 @@ class _CommunityScreenState extends State<CommunityScreen>
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                                 decoration: BoxDecoration(
-                                  color: AppColors.primaryRed.withOpacity(0.1),
+                                  color: AppColors.primaryRed.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
@@ -474,48 +574,54 @@ class _CommunityScreenState extends State<CommunityScreen>
                   Expanded(
                     child: !_isActive
                         ? _buildEmptyState(isArabic)
-                        : (discovered.isEmpty && connected.isEmpty)
-                            ? _buildEmptyState(isArabic)
-                            : ListView(
-                                padding: const EdgeInsets.symmetric(horizontal: 20),
-                                children: [
-                                  if (connected.isNotEmpty) ...[
-                                    _sectionHeader(
-                                      isArabic ? 'متصل' : 'Connected',
-                                      connected.length,
-                                    ),
-                                    ...connected.entries.map(
-                                      (e) => _deviceTile(
-                                        e.key,
-                                        e.value,
-                                        isConnected: true,
-                                        isArabic: isArabic,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                  ],
-                                  if (discovered.isNotEmpty) ...[
-                                    _sectionHeader(
-                                      isArabic ? 'قريب' : 'Nearby',
-                                      discovered.length,
-                                    ),
-                                    ...discovered.entries.map(
-                                      (e) => _deviceTile(
-                                        e.key,
-                                        e.value,
-                                        isConnected: false,
-                                        isArabic: isArabic,
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 120),
-                                ],
-                              ),
+                        : _buildDeviceList(isArabic, discovered, connected),
                   ),
                 ],
               ),
         ),
       ),
+    );
+  }
+
+  /// All nearby devices, tap to connect (pre-verification pairing UX).
+  /// Verification itself runs when the chat opens and shows in the
+  /// in-chat trust banner (issue #17).
+  Widget _buildDeviceList(
+    bool isArabic,
+    Map<String, String> discovered,
+    Map<String, String> connected,
+  ) {
+    if (discovered.isEmpty && connected.isEmpty) {
+      return _buildEmptyState(isArabic);
+    }
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      children: [
+        if (connected.isNotEmpty) ...[
+          _sectionHeader(isArabic ? 'متصل' : 'Connected', connected.length),
+          ...connected.entries.map(
+            (e) => _deviceTile(
+              e.key,
+              e.value,
+              isConnected: true,
+              isArabic: isArabic,
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (discovered.isNotEmpty) ...[
+          _sectionHeader(isArabic ? 'قريب' : 'Nearby', discovered.length),
+          ...discovered.entries.map(
+            (e) => _deviceTile(
+              e.key,
+              e.value,
+              isConnected: false,
+              isArabic: isArabic,
+            ),
+          ),
+        ],
+        const SizedBox(height: 120),
+      ],
     );
   }
 
@@ -733,4 +839,5 @@ class _CommunityScreenState extends State<CommunityScreen>
       ),
     );
   }
+
 }

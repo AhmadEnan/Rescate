@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/core/providers/demo_state.dart';
-import '../lib/features/ai_chat/tools/tool_definitions.dart';
+import 'package:rescate_app/core/providers/demo_state.dart';
+import 'package:rescate_app/features/ai_chat/tools/tool_definitions.dart';
 
 void main() {
   test('demo mode and generated readings stay disabled', () {
