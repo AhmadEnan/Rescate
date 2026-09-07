@@ -5,16 +5,22 @@
 // accidentally during the lint sweep.
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
+import 'consult_frame.dart';
+import 'consult_service.dart';
+
 /// Wraps the Google Nearby Connections API for Bluetooth/Wi-Fi P2P messaging.
 ///
 /// Singleton — every screen shares the same instance so connection state
-/// survives navigation.
-class NearbyService extends ChangeNotifier {
+/// survives navigation. Also implements [ConsultTransport] so
+/// [ConsultService] can send authenticated consult frames over the same
+/// connection.
+class NearbyService extends ChangeNotifier implements ConsultTransport {
   // ── Singleton ──────────────────────────────────────────────
   static final NearbyService _instance = NearbyService._internal();
   factory NearbyService() => _instance;
@@ -46,8 +52,20 @@ class NearbyService extends ChangeNotifier {
   Map<String, String> get pendingConnections =>
       Map.unmodifiable(_pendingConnections);
 
+  /// Last radio error (permissions denied, adapter off, plugin failure).
+  /// Surfaced in the UI — discovery failing silently is undebuggable.
+  String? _lastError;
+  String? get lastError => _lastError;
+
   /// Incoming message callback — set by chat screen
   void Function(String endpointId, String message)? onMessageReceived;
+
+  /// Incoming binary consult frame callback — wired by [ConsultService].
+  void Function(String endpointId, Uint8List bytes)? onBytesReceived;
+
+  @override
+  set onBytes(void Function(String endpointId, Uint8List bytes)? callback) =>
+      onBytesReceived = callback;
 
   /// Connection-state callback — set by screens
   void Function(String endpointId, String endpointName, bool connected)?
@@ -88,9 +106,12 @@ class NearbyService extends ChangeNotifier {
         );
       });
       _isAdvertising = true;
+      _lastError = null;
       notifyListeners();
     } catch (e) {
+      _lastError = 'Advertising failed: $e';
       debugPrint('Advertising error: $e');
+      notifyListeners();
     }
   }
 
@@ -114,6 +135,9 @@ class NearbyService extends ChangeNotifier {
           Strategy.P2P_CLUSTER,
           serviceId: _serviceId,
           onEndpointFound: (String id, String name, String serviceId) {
+            // The plugin re-reports endpoints right after they connect;
+            // never list a connected device as nearby again.
+            if (_connectedDevices.containsKey(id)) return;
             _discoveredDevices[id] = name;
             Profiler.count('mesh.endpoints.found', 1);
             notifyListeners();
@@ -127,9 +151,13 @@ class NearbyService extends ChangeNotifier {
         );
       });
       _isDiscovering = true;
+      _lastError = null;
       notifyListeners();
     } catch (e) {
+      _lastError =
+          'Scanning failed: $e — check Bluetooth and location permissions';
       debugPrint('Discovery error: $e');
+      notifyListeners();
     }
   }
 
@@ -173,6 +201,16 @@ class NearbyService extends ChangeNotifier {
     }
   }
 
+  /// Raw frame transport for [ConsultService].
+  @override
+  Future<void> sendBytes(String endpointId, Uint8List bytes) async {
+    try {
+      await _nearby.sendBytesPayload(endpointId, bytes);
+    } catch (e) {
+      debugPrint('Send bytes error: $e');
+    }
+  }
+
   // ── Disconnect ─────────────────────────────────────────────
   void disconnect(String endpointId) {
     _nearby.disconnectFromEndpoint(endpointId);
@@ -201,8 +239,16 @@ class NearbyService extends ChangeNotifier {
       id,
       onPayLoadRecieved: (String endpointId, Payload payload) {
         if (payload.type == PayloadType.BYTES && payload.bytes != null) {
-          final message = utf8.decode(payload.bytes!);
-          onMessageReceived?.call(endpointId, message);
+          final bytes = payload.bytes!;
+          // Consult frames start with the 'RS' magic; everything else is
+          // legacy plain-text chat.
+          if (bytes.length >= ConsultFrame.headerLength &&
+              bytes[0] == ConsultFrame.magic0 &&
+              bytes[1] == ConsultFrame.magic1) {
+            onBytesReceived?.call(endpointId, bytes);
+          } else {
+            onMessageReceived?.call(endpointId, utf8.decode(bytes));
+          }
         }
       },
     );
