@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "name": "rescate-retrieval-suite",
+    "version": "0.1.1",
+    "purpose": "Measure the retriever (mirror of LegacyRag) independently of any model: does the right chunk surface in topK, and is the decisive sentence inside the 180-char snippet? Issue #14 requires a baseline before changing the term map.",
+    "metrics": "hit@k, mrr, snippet_contains_answer",
+    "notes": "All (source, answer_marker) pairs verified against the current 312-chunk corpus by eval/grading/retrieval_metrics.py validate_corpus — the suite refuses to run if any claim breaks. For Arabic queries the expected behavior exercises the hand-written term map — failures here are exactly what #14 wants quantified."
+  },
+  "cases": [
+    {"id": "r-burn-en", "lang": "en", "query": "how do I treat a second degree burn?", "source": "burn_classification_guideline_v2 (1)", "answer_marker": "running water", "k": 5},
+    {"id": "r-burn-ar", "lang": "ar", "query": "حرق من الدرجة الثانية، ماذا أفعل؟", "source": "burn_classification_guideline_v2 (1)", "answer_marker": "running water", "k": 5},
+    {"id": "r-choking-en", "lang": "en", "query": "adult choking cannot breathe what should I do", "source": "First_Aid_Guide", "answer_marker": "abdominal thrust", "k": 5},
+    {"id": "r-choking-ar", "lang": "ar", "query": "شخص يختنق ولا يستطيع التنفس", "source": "First_Aid_Guide", "answer_marker": "abdominal thrust", "k": 5},
+    {"id": "r-cpr-en", "lang": "en", "query": "compression rate depth adult CPR", "source": "First_Aid_Guide", "answer_marker": "chest compression", "k": 5},
+    {"id": "r-cpr-ar", "lang": "ar", "query": "الإنعاش القلبي الرئوي معدل الضغطات", "source": "First_Aid_Guide", "answer_marker": "chest compression", "k": 5},
+    {"id": "r-bleeding-en", "lang": "en", "query": "severe bleeding from a wound immediate steps", "source": "First_Aid_Guide", "answer_marker": "direct pressure", "k": 5},
+    {"id": "r-bleeding-ar", "lang": "ar", "query": "نزيف شديد من جرح الخطوات الفورية", "source": "First_Aid_Guide", "answer_marker": "direct pressure", "k": 5},
+    {"id": "r-seizure-en", "lang": "en", "query": "what to do when someone has a seizure", "source": "06_neurological_emergencies_guideline", "answer_marker": "recovery position", "k": 5},
+    {"id": "r-seizure-ar", "lang": "ar", "query": "ماذا أفعل عند تشنجات ونوبة صرع", "source": "06_neurological_emergencies_guideline", "answer_marker": "recovery position", "k": 5},
+    {"id": "r-fracture-en", "lang": "en", "query": "how to immobilize a broken arm", "source": "02_bone_fractures_guideline", "answer_marker": "splint", "k": 5},
+    {"id": "r-fracture-ar", "lang": "ar", "query": "كسر في الذراع كيف أثبتها", "source": "02_bone_fractures_guideline", "answer_marker": "splint", "k": 5},
+    {"id": "r-poison-en", "lang": "en", "query": "child swallowed cleaning chemicals what to do", "source": "First_Aid_Guide", "answer_marker": "poison control", "k": 5},
+    {"id": "r-poison-ar", "lang": "ar", "query": "طفل ابتلع مادة كيميائية سامة", "source": "First_Aid_Guide", "answer_marker": "poison control", "k": 5},
+    {"id": "r-asthma-en", "lang": "en", "query": "asthma attack inhaler not working", "source": "03_breathing_chest_guideline", "answer_marker": "inhaler", "k": 5},
+    {"id": "r-asthma-ar", "lang": "ar", "query": "نوبة ربو والبخاخ لا يعمل", "source": "03_breathing_chest_guideline", "answer_marker": "inhaler", "k": 5},
+    {"id": "r-hypothermia-en", "lang": "en", "query": "signs of hypothermia and rewarming", "source": "01_chronic_diseases_guideline", "answer_marker": "hypothermia", "k": 5},
+    {"id": "r-hypothermia-ar", "lang": "ar", "query": "انخفاض حرارة الجسم وأعراضه", "source": "01_chronic_diseases_guideline", "answer_marker": "hypothermia", "k": 5},
+    {"id": "r-diabetic-en", "lang": "en", "query": "low blood sugar unconscious diabetic what to do", "source": "01_chronic_diseases_guideline", "answer_marker": "blood sugar", "k": 5},
+    {"id": "r-diabetic-ar", "lang": "ar", "query": "مريض سكر فقد الوعي وانخفاض السكر", "source": "01_chronic_diseases_guideline", "answer_marker": "blood sugar", "k": 5},
+    {"id": "r-head-en", "lang": "en", "query": "head injury when to worry danger signs", "source": "06_neurological_emergencies_guideline", "answer_marker": "head injury", "k": 5},
+    {"id": "r-head-ar", "lang": "ar", "query": "إصابة في الرأس متى تكون خطيرة", "source": "06_neurological_emergencies_guideline", "answer_marker": "head injury", "k": 5},
+    {"id": "r-snake-en", "lang": "en", "query": "snake bite first aid", "source": "05_poisoning_guideline", "answer_marker": "snakebite", "k": 5},
+    {"id": "r-snake-ar", "lang": "ar", "query": "عضة أفعى إسعافات أولية", "source": "05_poisoning_guideline", "answer_marker": "snakebite", "k": 5},
+    {"id": "r-shock-en", "lang": "en", "query": "signs of shock after major trauma", "source": "field_emergency_guide_v2", "answer_marker": "signs of shock", "k": 5},
+    {"id": "r-shock-ar", "lang": "ar", "query": "أعراض الصدمة بعد إصابة كبيرة", "source": "field_emergency_guide_v2", "answer_marker": "signs of shock", "k": 5},
+    {"id": "r-eye-en", "lang": "en", "query": "chemical splash in the eye rinse with water", "source": "05_poisoning_guideline", "answer_marker": "eye", "k": 5},
+    {"id": "r-eye-ar", "lang": "ar", "query": "مادة كيميائية في العين تغسيل", "source": "05_poisoning_guideline", "answer_marker": "eye", "k": 5},
+    {"id": "r-heat-en", "lang": "en", "query": "heat stroke cooling treatment", "source": "The Ultimate Survival Medicine Guide - Emergency Preparedness for Any Disaster 2015", "answer_marker": "heat stroke", "k": 5},
+    {"id": "r-heat-ar", "lang": "ar", "query": "ضربة شمس التبريد والعلاج", "source": "The Ultimate Survival Medicine Guide - Emergency Preparedness for Any Disaster 2015", "answer_marker": "heat stroke", "k": 5}
+  ]
+}
