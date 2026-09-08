@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:ai_inference/ai_inference.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../state/known_models.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,6 +33,10 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
   bool _safeMode = false;
   LoadAttempt? _previousAttempt;
   String? _logFilePath;
+
+  // per-known-model-id download state ('chat' | 'embedder')
+  final Map<String, double> _downloadProgress = {};
+  final Set<String> _downloading = {};
 
   LlmStatus get _status => LlmService.instance.status;
 
@@ -341,6 +346,8 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
                     if (_previousAttempt != null) _buildPreviousAttemptBanner(),
                     _buildSafeModeToggle(),
                     if (_logFilePath != null) _buildLogPathRow(),
+                    const SizedBox(height: 16),
+                    _buildKnownModelsDownloads(),
                     const SizedBox(height: 8),
                     const _RecommendedModelsCard(),
                   ],
@@ -350,6 +357,164 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
             _buildBottomBar(canLoad),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Downloads a known model (chat or embedder) straight into the sandbox.
+  Future<void> _downloadKnownModel(KnownModel model) async {
+    if (_downloading.contains(model.id)) return;
+    setState(() {
+      _errorMessage = null;
+      _downloading.add(model.id);
+      _downloadProgress[model.id] = 0;
+    });
+    try {
+      final model_ = await ModelStore.instance.downloadModel(
+        model.downloadUrl,
+        model.fileName,
+        expectedSha256: model.sha256Hex,
+        expectedBytes: model.sizeBytes,
+        onProgress: (copied, total) {
+          if (!mounted) return true;
+          if (total != null && total > 0) {
+            setState(() => _downloadProgress[model.id] = copied / total);
+          }
+          return true; // downloads are not cancellable mid-stream for now
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _importedModel = model.id == 'chat' ? model_ : _importedModel;
+      });
+      // auto-load the chat model after its download completes
+      if (model.id == 'chat') {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_kPrefsModelPathKey, model_.path);
+        setState(() {
+          _isLoading = true;
+        });
+        await _loadModel();
+      }
+    } on ModelImportException catch (e) {
+      if (mounted && e.message != 'cancelled') {
+        setState(() {
+          _errorMessage = e.message;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _errorMessage = 'Download failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloading.remove(model.id);
+          _downloadProgress.remove(model.id);
+        });
+      }
+    }
+  }
+
+  bool _knownModelStored(KnownModel model) {
+    final stored = _storedModels.any((m) => m.fileName == model.fileName);
+    return stored;
+  }
+
+  Widget _buildKnownModelsDownloads() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final model in kKnownModels) ...[
+          _buildKnownModelRow(model),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildKnownModelRow(KnownModel model) {
+    final stored = _knownModelStored(model);
+    final downloading = _downloading.contains(model.id);
+    final progress = _downloadProgress[model.id];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.cardBackground.withOpacity(0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                stored ? LucideIcons.checkCircle2 : LucideIcons.downloadCloud,
+                size: 18,
+                color: stored ? Colors.green : AppColors.primaryRed,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  model.displayName,
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: AppColors.textDark,
+                  ),
+                ),
+              ),
+              Text(
+                stored
+                    ? 'on device'
+                    : downloading
+                        ? '${((progress ?? 0) * 100).toStringAsFixed(0)}%'
+                        : model.sizeLabel,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AppColors.textDark.withOpacity(0.6),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            model.description,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              height: 1.4,
+              color: AppColors.textDark.withOpacity(0.65),
+            ),
+          ),
+          if (downloading && progress != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: AppColors.cardBackground.withOpacity(0.5),
+                valueColor: AlwaysStoppedAnimation(AppColors.primaryRed),
+              ),
+            ),
+          ] else if (!stored) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _isLoading || _isImporting
+                    ? null
+                    : () => _downloadKnownModel(model),
+                icon: const Icon(LucideIcons.download, size: 16),
+                label: Text(
+                  'Download',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
