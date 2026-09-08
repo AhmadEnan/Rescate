@@ -28,22 +28,30 @@ _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "eval"))
 
 from rag_mirror.legacy_rag import LegacyRag  # noqa: E402
-from harness.llm_harness import get_backend, ModelSpec, save_results  # noqa: E402
+from harness.llm_harness import (  # noqa: E402
+    ModelSpec, OpenAICompatBackend, get_backend, save_results,
+)
 
 QUEUE_IN = _REPO / "eval" / "queue" / "inbox"
 QUEUE_OUT = _REPO / "eval" / "queue" / "outbox"
 
 
 def build_backend(model: str, gguf: str | None):
+    import os
+    if not os.environ.get("RESCATE_EVAL_SERVER_URL"):
+        os.environ["RESCATE_EVAL_SERVER_URL"] = "http://127.0.0.1:8081"
+    server = os.environ["RESCATE_EVAL_SERVER_URL"]
     if gguf:
+        # direct GGUF path: use the shared llama-server on :8081 unless one is
+        # already configured
+        import subprocess
         spec = ModelSpec(name=model, repo_id="local", gguf_file=Path(gguf).name)
         return get_backend(spec, models_dir=str(Path(gguf).parent))
     models = json.loads((_REPO / "eval" / "harness" / "models.json").read_text())
     if model not in models:
         raise SystemExit(f"Unknown model '{model}'. Known: {sorted(models)}")
     m = models[model]
-    return get_backend(ModelSpec(name=model, repo_id=m["repo_id"], gguf_file=m["gguf_file"],
-                                 ctx_size=m.get("ctx_size", 4096)))
+    return OpenAICompatBackend(server, model=m["gguf_file"])
 
 
 def strip_think(text: str) -> str:
