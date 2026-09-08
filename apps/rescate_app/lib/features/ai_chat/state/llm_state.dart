@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../tools/tool_definitions.dart';
 import '../tools/tool_dispatcher.dart';
+import 'model_store.dart';
 
 const String _kPrefsConversationsKey = 'ai_chat.conversations.v2';
 const String _kPrefsActiveIdKey = 'ai_chat.active_conversation_id';
@@ -262,6 +263,21 @@ class LlmState extends ChangeNotifier {
 
       // Pre-warm RAG chunks in parallel (idempotent — safe to call multiple times).
       unawaited(LegacyRag.initialize());
+      // rag_v3: load sentence/vector assets (cheap) and, if the embedder GGUF
+      // is already on disk, load it + register anchor vectors. If the embedder
+      // is absent, LlmService transparently uses LegacyRag until it arrives.
+      unawaited(
+        Profiler.span('chat.ragV3Init', () async {
+          await RagService.instance.loadAssets();
+          final modelsDir = await ModelStore.instance.modelsDirectory();
+          final embedderPath = EmbedderService.embedderPath(modelsDir.path);
+          if (File(embedderPath).existsSync()) {
+            await EmbedderService.instance.load(embedderPath);
+          } else {
+            debugPrint('[LlmState] embedder GGUF not present; LegacyRag active');
+          }
+        }),
+      );
       await Profiler.span('chat.autoLoadModel', () => svc.loadModel(path));
     } catch (e) {
       debugPrint('[LlmState] tryAutoLoadModel failed: $e');
