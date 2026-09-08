@@ -24,5 +24,37 @@
     "gguf_file": "gemma-4-E4B-it-UD-Q4_K_XL.gguf",
     "ctx_size": 4096,
     "template": "gemma4"
+  },
+  "minicpm-2b": {
+    "repo_id": "MuffinMich/MiniCPM-2B-dpo-bf16-Q4_K_M-GGUF",
+    "gguf_file": "minicpm-2b-dpo-bf16-q4_k_m.gguf",
+    "ctx_size": 4096,
+    "template": "minicpm",
+    "note": "crashes llama-server mid-generation — known-bad conversion, excluded from matrix"
+  },
+  "minicpm5-2b": {
+    "repo_id": "openbmb/MiniCPM5-2B-GGUF",
+    "gguf_file": "MiniCPM5-2B-Q4_K_M.gguf",
+    "ctx_size": 4096,
+    "template": "minicpm5"
+  },
+  "qwen3.5-2b-q3": {
+    "repo_id": "unsloth/Qwen3.5-2B-GGUF",
+    "gguf_file": "Qwen3.5-2B-Q3_K_M.gguf",
+    "ctx_size": 4096,
+    "template": "qwen3.5"
+  },
+  "gemma-4-e2b-q3": {
+    "repo_id": "unsloth/gemma-4-E2B-it-GGUF",
+    "gguf_file": "gemma-4-E2B-it-Q3_K_M.gguf",
+    "ctx_size": 4096,
+    "template": "gemma4"
+  },
+  "silma-kashif-2b-q3": {
+    "repo_id": "mradermacher/SILMA-Kashif-2B-Instruct-v1.0-GGUF",
+    "gguf_file": "SILMA-Kashif-2B-Instruct-v1.0.Q3_K_M.gguf",
+    "ctx_size": 4096,
+    "template": "chatml",
+    "note": "RAG-specialized Arabic model; community Q3_K_M"
   }
 }
