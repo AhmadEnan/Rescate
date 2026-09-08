@@ -136,7 +136,8 @@ class RagV2:
 
     # ---- retrieval ----------------------------------------------------------
 
-    def retrieve(self, query: str, top_k: int = 8, dense: bool = True, lexical: bool = True) -> list[dict]:
+    def retrieve(self, query: str, top_k: int = 8, dense: bool = True, lexical: bool = True,
+                 neighbors: int = 0) -> list[dict]:
         dense_hits: list[tuple[int, float]] = []
         if dense and self.vecs_n is not None:
             qv = self._embed([query])[0]
@@ -171,6 +172,30 @@ class RagV2:
                 selected.append(best)
                 cand.remove(best)
 
+        # Neighbor expansion: multi-phase instructions (e.g. "after the seizure
+        # ends", compression-cycle details) typically live in the sentences
+        # adjacent to a strong hit. Merge them into the hit (flagged).
+        if neighbors > 0:
+            expanded: list[dict] = []
+            seen_units: set[int] = set()
+            for i in selected:
+                s = SENTENCES[i]
+                merged = s["text"]
+                merged_ids = [s["id"]]
+                for d in range(1, neighbors + 1):
+                    for j in (i - d, i + d):
+                        if 0 <= j < len(SENTENCES) and j not in seen_units \
+                                and SENTENCES[j]["chunk_id"] == s["chunk_id"]:
+                            seen_units.add(j)
+                            merged = f"{merged} {SENTENCES[j]['text']}"
+                            merged_ids.append(SENTENCES[j]["id"])
+                expanded.append({
+                    "unit_id": s["id"], "chunk_id": s["chunk_id"], "source": s["source"],
+                    "text": merged, "rrf": round(rrf[i], 5), "neighbor_ids": merged_ids,
+                })
+                seen_units.add(i)
+            return expanded
+
         out = []
         for i in selected:
             s = SENTENCES[i]
@@ -183,9 +208,10 @@ class RagV2:
             })
         return out
 
-    def build_context(self, query: str, top_k: int = 8, max_tokens: int = 1100) -> dict:
+    def build_context(self, query: str, top_k: int = 8, max_tokens: int = 1100,
+                      neighbors: int = 1) -> dict:
         """Whole-sentence context, grouped, within a token budget."""
-        hits = self.retrieve(query, top_k=top_k)
+        hits = self.retrieve(query, top_k=top_k, neighbors=neighbors)
         lines, used, sources = [], 0, []
         for h in hits:
             t = h["text"]
