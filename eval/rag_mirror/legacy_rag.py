@@ -73,6 +73,21 @@ SYSTEM_PROMPT_AR = (
     "بسؤال فقط. بلا تحية أو إخلاء مسؤولية أو رد غامض. اجعل الإجابة قصيرة "
     "وقابلة للتنفيذ."
 )
+SYSTEM_PROMPT_EN += (
+    " SCOPE: You provide first aid only. Never recommend or dose prescription "
+    "medications (antibiotics, painkillers beyond basic OTC guidance, insulin) - "
+    "even if the reference contains drug names or doses; those fragments are not "
+    "first-aid advice. For such questions state that medication must come from a "
+    "medical professional and give the safe first-aid alternative (wound care, "
+    "monitoring, evacuation)."
+)
+SYSTEM_PROMPT_AR += (
+    " النطاق: تقدم إسعافات أولية فقط. لا تنصح أبداً بأدوية بوصفة أو جرعات لها "
+    "(مضادات حيوية، مسكنات بخلاف المسكنات البسيطة، إنسولين) حتى لو ذكر المرجع "
+    "أسماء أدوية أو جرعات؛ فهذه أجزاء ليست نصيحة إسعافية. لهذه الأسئلة اذكر أن "
+    "الدواء يجب أن يأتي من مختص طبي وأعطِ البديل الإسعافي الآمن (العناية بالجرح، "
+    "المراقبة، الوصول للرعاية)."
+)
 
 _ENGLISH_STOP_EXTRA = {
     "a", "an", "the", "and", "or", "but", "if", "then", "to", "of", "in", "on",
