@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:dev_profiler/dev_profiler.dart';
@@ -9,6 +10,8 @@ import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
 
 import 'device_profile.dart';
+import 'rag/embedder_service.dart';
+import 'rag/rag_service.dart';
 import 'legacy_rag.dart';
 import 'llm_config.dart';
 import 'llm_load_diagnostics.dart';
@@ -448,7 +451,6 @@ class LlmService extends ChangeNotifier {
     var tokenMaxMs = 0;
 
     TraceStep? stepRag;
-    TraceStep? stepPrompt;
     TraceStep? stepDecode;
 
     // KV prefix reuse: rely on llamadart's in-session `reusePromptPrefix`
@@ -458,37 +460,39 @@ class LlmService extends ChangeNotifier {
     // the prefix matcher. Revisit only if measurements show a cross-session
     // win is worth the engineering. For now drop it.
     try {
+      // ── RAG v3 path (non-tool turn) ──────────────────────────────────────
       stepRag = turn?.begin('rag.search');
-      final chunks = Profiler.spanSync(
-        'rag.search',
-        () => LegacyRag.search(userMessage, topK: 2),
+      String fullPrompt;
+      List<double>? queryVec;
+      if (EmbedderService.instance.isReady) {
+        try {
+          queryVec = await EmbedderService.instance.embed(userMessage);
+        } catch (_) {
+          queryVec = null;
+        }
+      }
+      final ragResult = await RagService.instance.buildPromptV3(
+        question: userMessage,
+        queryVec:
+            queryVec == null ? null : Float32List.fromList(queryVec),
+        enableThinking: LlmDefaults.enableThinking,
       );
-      stepRag?.op(LegacyRag.lastSearchOps);
-      stepRag?.setData('chunks', chunks.length);
+      fullPrompt = ragResult.prompt;
+      stepRag?.setData('sources', ragResult.sources);
+      stepRag?.setData('v3', queryVec != null);
+      stepRag?.setData('triaged', ragResult.triaged);
       stepRag?.end();
-      Profiler.count('rag.chunks.searched', chunks.length);
-
-      stepPrompt = turn?.begin('rag.buildPrompt');
-      final fullPrompt = Profiler.spanSync(
-        'rag.buildPrompt',
-        () => LegacyRag.buildPrompt(
-          question: userMessage,
-          chunks: chunks,
-          enableThinking: LlmDefaults.enableThinking,
-        ),
-      );
-      stepPrompt?.op(fullPrompt.length);
+      Profiler.count('rag.v3.used', queryVec != null ? 1 : 0);
       if (kProfilerEnabled) {
         try {
           final promptTokens = await _engine!.getTokenCount(fullPrompt);
-          stepPrompt?.setData('prompt_tokens', promptTokens);
+          stepRag?.setData('prompt_tokens', promptTokens);
           turn?.setData('prompt_tokens', promptTokens);
         } catch (_) {
           // Token counting is diagnostic-only and must never block a turn.
         }
       }
-      stepPrompt?.setData('prompt_chars', fullPrompt.length);
-      stepPrompt?.end();
+      stepRag?.setData('prompt_chars', fullPrompt.length);
 
       const params = GenerationParams(
         temp: LlmDefaults.temperature,
@@ -712,38 +716,53 @@ class LlmService extends ChangeNotifier {
     }
 
     try {
+      // ── RAG v3 path ───────────────────────────────────────────────────────
+      // RagService owns asset loading + LegacyRag fallback. When the embedder
+      // is ready we embed the query and use the validated rag_v3 pipeline
+      // (sentence-level dense retrieval + triage + warzone prompt); otherwise
+      // we transparently fall back to LegacyRag so the app never blocks on
+      // the embedder download.
       final TraceStep? stepRag = turn?.begin('rag.search');
-      final chunks = Profiler.spanSync(
-        'rag.search',
-        () => LegacyRag.search(userMessage, topK: 2),
+      String prompt;
+      List<String> ragSources;
+      var ragTriaged = false;
+      final ragSw = Stopwatch()..start();
+      List<double>? queryVec;
+      if (EmbedderService.instance.isReady) {
+        try {
+          queryVec = await EmbedderService.instance.embed(userMessage);
+        } catch (_) {
+          queryVec = null; // fall back below
+        }
+      }
+      final ragResult = await RagService.instance.buildPromptV3(
+        question: userMessage,
+        queryVec: queryVec == null
+            ? null
+            : Float32List.fromList(queryVec),
+        toolDeclarations: registry.renderDeclarations(),
+        enableThinking: LlmDefaults.enableThinking,
       );
-      stepRag?.op(LegacyRag.lastSearchOps);
-      stepRag?.setData('chunks', chunks.length);
+      prompt = ragResult.prompt;
+      ragSources = ragResult.sources;
+      ragTriaged = ragResult.triaged;
+      ragSw.stop();
+      stepRag?.setData('sources', ragSources);
+      stepRag?.setData('v3', queryVec != null);
+      stepRag?.setData('triaged', ragTriaged);
+      stepRag?.setData('ms', ragSw.elapsedMilliseconds);
       stepRag?.end();
-      Profiler.count('rag.chunks.searched', chunks.length);
-
-      final TraceStep? stepPrompt = turn?.begin('rag.buildPrompt');
-      var prompt = Profiler.spanSync(
-        'rag.buildPrompt',
-        () => LegacyRag.buildPrompt(
-          question: userMessage,
-          chunks: chunks,
-          toolDeclarations: registry.renderDeclarations(),
-          enableThinking: LlmDefaults.enableThinking,
-        ),
-      );
-      stepPrompt?.op(prompt.length);
+      Profiler.count('rag.v3.used', queryVec != null ? 1 : 0);
       if (kProfilerEnabled) {
         try {
           final promptTokens = await _engine!.getTokenCount(prompt);
-          stepPrompt?.setData('prompt_tokens', promptTokens);
+          stepRag?.setData('prompt_tokens', promptTokens);
           turn?.setData('prompt_tokens', promptTokens);
         } catch (_) {
           // Token counting is diagnostic-only and must never block a turn.
         }
       }
-      stepPrompt?.setData('prompt_chars', prompt.length);
-      stepPrompt?.end();
+      stepRag?.setData('prompt_chars', prompt.length);
 
       const params = GenerationParams(
         temp: LlmDefaults.temperature,
