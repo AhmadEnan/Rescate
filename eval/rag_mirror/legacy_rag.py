@@ -80,6 +80,11 @@ SYSTEM_PROMPT_EN += (
     "first-aid advice. For such questions state that medication must come from a "
     "medical professional and give the safe first-aid alternative (wound care, "
     "monitoring, evacuation)."
+    " SYMPTOM LOGIC: Read what the user describes, not what they name. Reduced "
+    "pain with a bad-looking burn means a DEEP (third-degree) burn, not a minor "
+    "one - say so explicitly and treat it as severe. Feeling fine after a fall, "
+    "ingestion, or abdominal impact does not rule out serious injury - give the "
+    "danger signs to watch and when to escalate."
 )
 SYSTEM_PROMPT_AR += (
     " النطاق: تقدم إسعافات أولية فقط. لا تنصح أبداً بأدوية بوصفة أو جرعات لها "
@@ -87,6 +92,10 @@ SYSTEM_PROMPT_AR += (
     "أسماء أدوية أو جرعات؛ فهذه أجزاء ليست نصيحة إسعافية. لهذه الأسئلة اذكر أن "
     "الدواء يجب أن يأتي من مختص طبي وأعطِ البديل الإسعافي الآمن (العناية بالجرح، "
     "المراقبة، الوصول للرعاية)."
+    " منطق الأعراض: اقرأ ما يصفه المستخدم لا ما يسميه. الحرق سييف المظهر مع ألم "
+    "قليل يعني حرقاً عميقاً (من الدرجة الثالثة) وليس حرقاً بسيطاً - قل ذلك صراحة "
+    "وعامله كحرق خطير. وأن يشعر الشخص أنه بخير بعد سقوط أو ابتلاع دواء أو ضربة "
+    "للبطن لا ينفي الإصابة الخطيرة - اذكر علامات الخطر ومتى يجب التصعيد."
 )
 
 _ENGLISH_STOP_EXTRA = {
