@@ -16,8 +16,9 @@ import 'package:ai_inference/src/rag/triage_context.dart';
 import 'package:ai_inference/src/rag/prompt_v3.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _assetDir =
-    '/home/melezaly/Projects/Rescate/packages/ai_inference/assets/rag';
+// Resolve relative to the checkout so the test runs on CI too.
+// Resolve relative to the package root (flutter test CWD).
+const _assetDir = 'assets/rag';
 const _embServer = String.fromEnvironment(
   'RESCATE_EMB_SERVER',
   defaultValue: '',
