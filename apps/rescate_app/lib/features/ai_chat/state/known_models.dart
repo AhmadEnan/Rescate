@@ -28,9 +28,16 @@ class KnownModel {
       sizeBytes == null ? 'size unknown' : '${(sizeBytes! / (1024 * 1024)).round()} MB';
 }
 
-// gemma-4-E2B-it Q4_K_M, 2.6GB class.
-// NOTE: replace the URL with the project's own mirror when available; the
-// checksum below must be re-pinned from the actual artifact before release.
+// gemma-4-E2B-it Q4_K_M, ~2.9 GiB.
+//
+// AUTHENTICITY: URL is pinned to an immutable commit SHA (not the mutable
+// `main` ref) and sha256 is pinned below. Both values were read from the
+// artifact's own LFS metadata at that exact revision and cross-checked
+// against the served Content-Length (3,106,738,272 bytes) — the same method
+// that reproduces the embedder pin byte-for-byte.
+//
+// NOTE: replace the URL with the project's own mirror when available, and
+// re-pin sizeBytes/sha256Hex from the new artifact if you do.
 final KnownModel kChatModel = KnownModel(
   id: 'chat',
   displayName: 'Assistant model (Gemma 4 E2B, Q4)',
@@ -40,6 +47,9 @@ final KnownModel kChatModel = KnownModel(
   downloadUrl: Uri.parse(
     'https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/0314792d7f1f7e229411f620751375812bb9faf2/gemma-4-E2B-it-Q4_K_M.gguf',
   ),
+  sizeBytes: 3106738272,
+  sha256Hex:
+      '740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8',
 );
 
 // Qwen3-Embedding-0.6B — enables rag_v3 retrieval. Without it the app still

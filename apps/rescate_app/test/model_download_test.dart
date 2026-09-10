@@ -249,13 +249,22 @@ void main() {
       }
     });
 
-    test('embedder entry is self-consistent', () {
+    test('every registry entry is checksum- and size-pinned', () {
+      for (final model in kKnownModels) {
+        expect(model.sha256Hex, isNotNull,
+            reason: '${model.id} artifact must be checksum-pinned — GGUF '
+                'magic bytes are not an authenticity check');
+        expect(model.sha256Hex!.length, 64,
+            reason: '${model.id} sha256 must be a 64-char hex digest');
+        expect(model.sizeBytes, greaterThan(0),
+            reason: '${model.id} size must be pinned so the free-space and '
+                'Content-Length checks can run before streaming');
+      }
+    });
+
+    test('embedder entry stays aligned with the loader', () {
       expect(kEmbedderModel.id, 'embedder');
       expect(kEmbedderModel.fileName, 'qwen3-embedding-0.6b-q5km.gguf');
-      expect(kEmbedderModel.sha256Hex, isNotNull,
-          reason: 'embedder artifact must be checksum-pinned');
-      expect(kEmbedderModel.sha256Hex!.length, 64);
-      expect(kEmbedderModel.sizeBytes, greaterThan(0));
     });
   });
 }
