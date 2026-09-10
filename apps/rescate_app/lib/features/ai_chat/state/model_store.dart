@@ -185,8 +185,11 @@ class ModelStore {
       final rafPart = partFile.openSync(mode: FileMode.write);
       try {
         var copied = 0;
+        // Sequential read without seeks: file_picker cache copies (and some
+        // content-provider fds) reject setPositionSync with EINVAL (errno 22)
+        // even for valid offsets, while sequential reads always work. Since
+        // import is strictly front-to-back, the position is implicit.
         while (copied < totalBytes) {
-          rafSource.setPositionSync(copied);
           final chunkSize = copied + _kCopyChunkBytes > totalBytes
               ? totalBytes - copied
               : _kCopyChunkBytes;
@@ -264,6 +267,158 @@ class ModelStore {
       onProgress: onProgress,
       deleteSource: false, // never delete a user file from their own storage
     );
+  }
+
+  /// Downloads a model over HTTP directly into the sandbox with the same
+  /// atomicity guarantees as file import:
+  ///   stream -> `<name>.gguf.part` (hashing chunk-wise)
+  ///   -> GGUF header re-validation on the sandbox copy
+  ///   -> atomic rename -> `.sha256` sidecar.
+  ///
+  /// Share-friendly flow: a user who received the app from someone else can
+  /// fetch models in-app without any file transfer or SAF picker.
+  ///
+  /// [expectedSha256] (optional): aborts if the downloaded file's hash does
+  /// not match. [expectedBytes] (optional): sanity check against truncation
+  /// before downloading (server content-length is authoritative otherwise).
+  Future<ImportedModel> downloadModel(
+    Uri url,
+    String fileName, {
+    String? expectedSha256,
+    int? expectedBytes,
+    bool Function(int copiedBytes, int? totalBytes)? onProgress,
+    HttpClient? client,
+  }) async {
+    final name = _sanitizeName(fileName);
+    if (!name.toLowerCase().endsWith('.gguf')) {
+      throw ModelImportException('Downloaded file must be a .gguf model.');
+    }
+
+    final dir = await modelsDirectory();
+    _cleanupPartialFiles(dir);
+
+    final target = File('${dir.path}/$name');
+    final partFile = File('${target.path}.part');
+    if (target.existsSync()) {
+      throw ModelImportException(
+        'A model named "$name" is already stored. Remove it first or rename the new file.',
+      );
+    }
+    if (partFile.existsSync()) partFile.deleteSync();
+
+    final http = client ?? HttpClient();
+    try {
+      http.connectionTimeout = const Duration(seconds: 30);
+      final request = await http.getUrl(url);
+      final response = await request.close();
+      if (response.statusCode != 200) {
+        await response.drain<void>();
+        throw ModelImportException(
+          'Download failed: HTTP ${response.statusCode} for $name.',
+        );
+      }
+
+      // Total size: prefer server content-length; fall back to caller hint.
+      // API contract: when BOTH the server length and expectedBytes are
+      // known and disagree, the server artifact has drifted from what the
+      // caller pinned — fail fast before streaming 400MB to nowhere.
+      final contentLength = response.contentLength; // -1 when unknown
+      if (contentLength > 0 &&
+          expectedBytes != null &&
+          expectedBytes > 0 &&
+          contentLength != expectedBytes) {
+        await response.drain<void>();
+        throw ModelImportException(
+          'Server artifact size mismatch: expected $expectedBytes bytes '
+          '(pinned), server reports $contentLength. The artifact at this '
+          'URL changed; update the known-models registry.',
+        );
+      }
+      final totalBytes =
+          contentLength > 0 ? contentLength : (expectedBytes ?? -1);
+
+      // Free-space pre-check when we know the size (same headroom as import).
+      if (totalBytes > 0) {
+        final available = await _resolveFreeBytes(dir.path);
+        if (available != null &&
+            available < totalBytes + _kFreeSpaceHeadroomBytes) {
+          throw ModelImportException(
+            'Not enough free space. The model needs '
+            '${(totalBytes / (1024 * 1024)).toStringAsFixed(0)} MB plus '
+            'working headroom; ${(available / (1024 * 1024)).toStringAsFixed(0)} MB available.',
+          );
+        }
+      }
+
+      final digestSink = _StreamingSha256();
+      var copied = 0;
+      final rafPart = partFile.openSync(mode: FileMode.write);
+      try {
+        await for (final chunk in response) {
+          rafPart.writeFromSync(chunk);
+          digestSink.add(chunk);
+          copied += chunk.length;
+          if (onProgress != null) {
+            final keepGoing =
+                onProgress(copied, totalBytes > 0 ? totalBytes : null);
+            if (!keepGoing) {
+              throw ModelImportException('cancelled');
+            }
+          }
+        }
+        rafPart.flushSync();
+      } catch (e) {
+        rethrow;
+      } finally {
+        rafPart.closeSync();
+        response.detachSocket().then((_) {}).catchError((_) {});
+      }
+
+      if (copied <= _kMinPlausibleGgufBytes) {
+        throw ModelImportException('Downloaded file is too small to be a GGUF model.');
+      }
+      if (totalBytes > 0 && copied != totalBytes) {
+        throw ModelImportException(
+          'Download was interrupted: expected $totalBytes bytes, got $copied.',
+        );
+      }
+
+      // Validate on the sandbox copy before promotion.
+      final check = validateGgufHeader(partFile.path);
+      if (!check.ok) {
+        throw ModelImportException(
+          'Downloaded file failed GGUF validation: ${check.problem}',
+        );
+      }
+
+      final actualSha = await _hashFile(partFile.path);
+      if (expectedSha256 != null &&
+          actualSha.toLowerCase() != expectedSha256.toLowerCase()) {
+        throw ModelImportException(
+          'Checksum mismatch: the download is corrupt or was tampered with. '
+          'Expected $expectedSha256, got $actualSha.',
+        );
+      }
+
+      // Atomic promotion + sidecar.
+      partFile.renameSync(target.path);
+      File('${target.path}.sha256').writeAsStringSync(actualSha);
+
+      return ImportedModel(
+        path: target.path,
+        fileName: name,
+        sizeBytes: copied,
+        sha256Hex: actualSha,
+      );
+    } on ModelImportException {
+      _deleteQuietly(partFile);
+      rethrow;
+    } catch (e) {
+      _deleteQuietly(partFile);
+      throw ModelImportException('Download failed: $e');
+    } finally {
+      if (client == null) http.close();
+    }
   }
 
   /// Re-verifies a stored model against its sidecar checksum. Expensive
@@ -402,17 +557,17 @@ class ModelStore {
 
   static Future<String> _hashFile(String path) async {
     final hasher = _StreamingSha256();
+    // Sequential read without seeks (same errno-22 consideration as import:
+    // content-provider fds may reject setPositionSync).
     final raf = File(path).openSync();
     try {
-      var position = 0;
       final length = raf.lengthSync();
-      final buffer = Uint8List(_kCopyChunkBytes);
-      while (position < length) {
-        raf.setPositionSync(position);
-        final chunk = raf.readSync(buffer.length);
+      var remaining = length;
+      while (remaining > 0) {
+        final chunk = raf.readSync(_kCopyChunkBytes.clamp(0, remaining));
         if (chunk.isEmpty) break;
         hasher.add(chunk);
-        position += chunk.length;
+        remaining -= chunk.length;
       }
       return hasher.hex;
     } finally {
@@ -425,7 +580,7 @@ class ModelStore {
   /// callers then rely on the copy itself failing cleanly.
   static Future<int?> _freeBytesViaDf(String path) async {
     try {
-      final result = await Process.run('df', ['-k', path]);
+      final result = await Process.run('df', ['-kP', path]);
       if (result.exitCode != 0) return null;
       return parseDfAvailableBytes(result.stdout as String, path);
     } catch (_) {
@@ -433,23 +588,32 @@ class ModelStore {
     }
   }
 
-  /// Parses the `Available` (KB) column from `df -k` output for the row that
-  /// mentions [mountPath]. Exposed for unit testing.
+  /// Parses the `Available` (KB) column from `df -kP` output (last row).
+  /// Exposed for unit testing.
+  /// Parses `df -kP <path>` output into available bytes.
+  ///
+  /// df prints one row per filesystem: `Filesystem 1024-blocks Used Available
+  /// Capacity Mounted-on`. The LAST line is the filesystem actually selected
+  /// for [mountPath] — the mount point in that row is the fs root (e.g. `/`
+  /// or `/data`), NOT the requested path, so searching rows for [mountPath]
+  /// silently returns null on Android and most Linux setups. POSIX `-P`
+  /// guarantees exactly 6 columns and no wrapping.
   static int? parseDfAvailableBytes(String dfOutput, String mountPath) {
-    for (final line in dfOutput.split('\n')) {
-      if (!line.contains(mountPath)) continue;
-      final columns = line
-          .trim()
-          .split(RegExp(r'\s+'))
-          .where((c) => c.isNotEmpty)
-          .toList(growable: false);
-      // Filesystem 1024-blocks Used Available Capacity Mounted-on
-      if (columns.length < 4) continue;
-      final availableKb = int.tryParse(columns[3]);
-      if (availableKb == null) continue;
-      return availableKb * 1024;
-    }
-    return null;
+    final lines = dfOutput
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList(growable: false);
+    if (lines.length < 2) return null; // header + at least one fs row
+    final columns = lines.last
+        .split(RegExp(r'\s+'))
+        .where((c) => c.isNotEmpty)
+        .toList(growable: false);
+    // Filesystem 1024-blocks Used Available Capacity Mounted-on
+    if (columns.length < 4) return null;
+    final availableKb = int.tryParse(columns[3]);
+    if (availableKb == null) return null;
+    return availableKb * 1024;
   }
 
   static bool _listEquals(List<int> a, List<int> b) {

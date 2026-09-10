@@ -399,8 +399,50 @@ Filesystem     1K-blocks      Used Available Use% Mounted on
       );
     });
 
+    test('realistic Android case: mount point differs from requested path', () {
+      // df -kP /data/user/0/com.example.rescate_app/files/models reports the
+      // /data filesystem row — the mount point is /data, NOT the requested
+      // path. The old parser searched rows for the requested path and
+      // silently returned null here.
+      const output = '''
+Filesystem 1024-blocks Used Available Capacity Mounted-on
+/dev/block/dm-13 103003656 62124656 40879000 61% /data
+''';
+      expect(
+        ModelStore.parseDfAvailableBytes(
+            output, '/data/user/0/com.example.rescate_app/files/models'),
+        40879000 * 1024,
+      );
+    });
+
+    test('multi-fs output: uses the last row (the selected filesystem)', () {
+      const output = '''
+Filesystem 1024-blocks Used Available Capacity Mounted-on
+tmpfs 1989508 668 1988840 1% /dev
+/dev/block/dm-4 56089024 20915288 35173736 38% /storage/emulated
+/dev/block/dm-13 103003656 62124656 40879000 61% /data
+''';
+      expect(
+        ModelStore.parseDfAvailableBytes(output, '/data/user/0/app/files'),
+        40879000 * 1024,
+      );
+    });
+
     test('returns null for unparsable output', () {
       expect(ModelStore.parseDfAvailableBytes('garbage', '/data'), isNull);
+    });
+
+    test('returns null for header-only output', () {
+      const output = 'Filesystem 1024-blocks Used Available Capacity Mounted-on';
+      expect(ModelStore.parseDfAvailableBytes(output, '/data'), isNull);
+    });
+
+    test('returns null when Available column is unparsable', () {
+      const output = '''
+Filesystem 1024-blocks Used Available Capacity Mounted-on
+weird-fs 1024-blocks n/a n/a 0% /data
+''';
+      expect(ModelStore.parseDfAvailableBytes(output, '/data'), isNull);
     });
   });
 }
