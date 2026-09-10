@@ -319,7 +319,21 @@ class ModelStore {
       }
 
       // Total size: prefer server content-length; fall back to caller hint.
+      // API contract: when BOTH the server length and expectedBytes are
+      // known and disagree, the server artifact has drifted from what the
+      // caller pinned — fail fast before streaming 400MB to nowhere.
       final contentLength = response.contentLength; // -1 when unknown
+      if (contentLength > 0 &&
+          expectedBytes != null &&
+          expectedBytes > 0 &&
+          contentLength != expectedBytes) {
+        await response.drain<void>();
+        throw ModelImportException(
+          'Server artifact size mismatch: expected $expectedBytes bytes '
+          '(pinned), server reports $contentLength. The artifact at this '
+          'URL changed; update the known-models registry.',
+        );
+      }
       final totalBytes =
           contentLength > 0 ? contentLength : (expectedBytes ?? -1);
 
@@ -566,7 +580,7 @@ class ModelStore {
   /// callers then rely on the copy itself failing cleanly.
   static Future<int?> _freeBytesViaDf(String path) async {
     try {
-      final result = await Process.run('df', ['-k', path]);
+      final result = await Process.run('df', ['-kP', path]);
       if (result.exitCode != 0) return null;
       return parseDfAvailableBytes(result.stdout as String, path);
     } catch (_) {
@@ -574,23 +588,32 @@ class ModelStore {
     }
   }
 
-  /// Parses the `Available` (KB) column from `df -k` output for the row that
-  /// mentions [mountPath]. Exposed for unit testing.
+  /// Parses the `Available` (KB) column from `df -kP` output (last row).
+  /// Exposed for unit testing.
+  /// Parses `df -kP <path>` output into available bytes.
+  ///
+  /// df prints one row per filesystem: `Filesystem 1024-blocks Used Available
+  /// Capacity Mounted-on`. The LAST line is the filesystem actually selected
+  /// for [mountPath] — the mount point in that row is the fs root (e.g. `/`
+  /// or `/data`), NOT the requested path, so searching rows for [mountPath]
+  /// silently returns null on Android and most Linux setups. POSIX `-P`
+  /// guarantees exactly 6 columns and no wrapping.
   static int? parseDfAvailableBytes(String dfOutput, String mountPath) {
-    for (final line in dfOutput.split('\n')) {
-      if (!line.contains(mountPath)) continue;
-      final columns = line
-          .trim()
-          .split(RegExp(r'\s+'))
-          .where((c) => c.isNotEmpty)
-          .toList(growable: false);
-      // Filesystem 1024-blocks Used Available Capacity Mounted-on
-      if (columns.length < 4) continue;
-      final availableKb = int.tryParse(columns[3]);
-      if (availableKb == null) continue;
-      return availableKb * 1024;
-    }
-    return null;
+    final lines = dfOutput
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList(growable: false);
+    if (lines.length < 2) return null; // header + at least one fs row
+    final columns = lines.last
+        .split(RegExp(r'\s+'))
+        .where((c) => c.isNotEmpty)
+        .toList(growable: false);
+    // Filesystem 1024-blocks Used Available Capacity Mounted-on
+    if (columns.length < 4) return null;
+    final availableKb = int.tryParse(columns[3]);
+    if (availableKb == null) return null;
+    return availableKb * 1024;
   }
 
   static bool _listEquals(List<int> a, List<int> b) {

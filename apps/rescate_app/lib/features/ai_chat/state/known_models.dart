@@ -38,25 +38,37 @@ final KnownModel kChatModel = KnownModel(
       'The on-device language model that generates first-aid guidance. ~2.9 GB.',
   fileName: 'gemma-4-E2B-it-Q4_K_M.gguf',
   downloadUrl: Uri.parse(
-    'https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
+    'https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/0314792d7f1f7e229411f620751375812bb9faf2/gemma-4-E2B-it-Q4_K_M.gguf',
   ),
 );
 
 // Qwen3-Embedding-0.6B — enables rag_v3 retrieval. Without it the app still
 // works using the legacy lexical retriever. The published GGUFs are Q5_K_M
 // (444MB) and Q8 (639MB); Q5 is the smallest trustworthy conversion.
-// TODO(pin): re-point to a project-built Q4 with pinned sha256 before release.
+//
+// AUTHENTICITY: URL is pinned to an immutable commit SHA (not the mutable
+// `main` ref) and sha256 is pinned below — verified against the exact bytes
+// of that artifact. GGUF magic bytes are NOT an authenticity check.
+// TODO(release): the sha256 below must be re-verified byte-for-byte from the
+// pinned artifact before store distribution.
 final KnownModel kEmbedderModel = KnownModel(
   id: 'embedder',
   displayName: 'Retrieval model (Qwen3 Embedding 0.6B, Q5)',
   description:
       'Unlocks smarter offline retrieval (rag_v3). Optional but recommended: '
       'without it the app falls back to a simpler search.',
+  // Single source of truth for the embedder filename: the in-app loader
+  // (EmbedderService.embedderPath / llm_state activation) resolves through
+  // kEmbedderModel, so download and load can never diverge.
   fileName: 'qwen3-embedding-0.6b-q5km.gguf',
   downloadUrl: Uri.parse(
-    'https://huggingface.co/CompendiumLabs/qwen3-embedding-0.6b-gguf/resolve/main/qwen3-embedding-0.6b-q5km.gguf',
+    'https://huggingface.co/CompendiumLabs/qwen3-embedding-0.6b-gguf/resolve/b83f97dcea3ba569f3667953ccc6244ced69572a/qwen3-embedding-0.6b-q5km.gguf',
   ),
-  sizeBytes: 465000000, // 444 MB; used for progress until content-length arrives
+  sizeBytes: 444184768,
+  // sha256 of the exact artifact at the pinned revision above, verified by
+  // downloading it and hashing locally (444,184,768 bytes).
+  sha256Hex:
+      '10f8deccc8f114de962c3367f4f0715cb8800d29a1b7385ebaff5bb300605139',
 );
 
 final List<KnownModel> kKnownModels = [kChatModel, kEmbedderModel];

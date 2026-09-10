@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rescate_app/features/ai_chat/state/known_models.dart';
 import 'package:rescate_app/features/ai_chat/state/model_store.dart';
 
 /// Minimal in-process HTTP server serving byte blobs at /<name>.
@@ -12,6 +13,8 @@ class _BlobServer {
   HttpServer? _server;
   final Map<String, Uint8List> blobs = {};
   final Set<String> interrupted = {};
+  // Per-path content-length overrides (simulates server artifact drift).
+  final Map<String, int> lengthOverrides = {};
   int chunkSize = 64 * 1024;
 
   Future<String> start() async {
@@ -24,18 +27,20 @@ class _BlobServer {
         await req.response.close();
         return;
       }
-      req.response.contentLength = blob.length;
+      // Optional per-path content-length override to simulate server drift.
+      final override = lengthOverrides[name];
+      req.response.contentLength = override ?? blob.length;
       final limit = interrupted.contains(name) ? blob.length ~/ 2 : blob.length;
       for (var off = 0; off < limit; off += chunkSize) {
         final end = (off + chunkSize) > limit ? limit : off + chunkSize;
         req.response.add(blob.sublist(off, end));
         await req.response.flush();
       }
-      if (interrupted.contains(name)) {
-        // Simulate a torn download: close the socket mid-body without
-        // completing the declared contentLength. Dart's HttpResponse throws
-        // when headers are already sent and close() is called short — catch
-        // and swallow; the client still sees a truncated stream.
+      if (interrupted.contains(name) || lengthOverrides.containsKey(name)) {
+        // Torn download (interrupted) or drift simulation (lengthOverride):
+        // the body is shorter than the declared contentLength, so close()
+        // throws server-side — catch and swallow; the client still sees a
+        // truncated/short stream.
         try {
           await req.response.close();
         } catch (_) {}
@@ -196,6 +201,61 @@ void main() {
         throwsA(isA<ModelImportException>()),
       );
       expect(server.blobs.containsKey('whatever'), isFalse);
+    });
+
+    test('content-length vs expectedBytes mismatch fails fast', () async {
+      final blob = ggufBlob(1024 * 1024);
+      server.blobs['drifted.gguf'] = blob;
+      server.lengthOverrides['drifted.gguf'] = blob.length + 4096;
+      final url = Uri.parse('$baseUrl/drifted.gguf');
+
+      await expectLater(
+        store().downloadModel(url, 'drifted.gguf', expectedBytes: blob.length),
+        throwsA(isA<ModelImportException>()),
+      );
+      // Nothing downloaded, nothing promoted.
+      expect(File('${sandbox.path}/drifted.gguf').existsSync(), isFalse);
+      expect(File('${sandbox.path}/drifted.gguf.part').existsSync(), isFalse);
+    });
+
+    test('content-length matching expectedBytes proceeds normally', () async {
+      final blob = ggufBlob(1024 * 1024);
+      server.blobs['match.gguf'] = blob;
+      final url = Uri.parse('$baseUrl/match.gguf');
+
+      final model = await store()
+          .downloadModel(url, 'match.gguf', expectedBytes: blob.length);
+      expect(model.sizeBytes, blob.length);
+      expect(File(model.path).existsSync(), isTrue);
+    });
+  });
+
+  group('known-models registry contract', () {
+    test('registry filenames are sanitized-safe and gguf-suffixed', () {
+      for (final model in kKnownModels) {
+        expect(model.fileName.toLowerCase().endsWith('.gguf'), isTrue,
+            reason: '${model.id} fileName must end in .gguf');
+        expect(model.fileName.contains('/'), isFalse,
+            reason: '${model.id} fileName must be a bare file name');
+        expect(model.downloadUrl.scheme, 'https');
+        // Immutable revision pin (not a mutable branch ref like `main`).
+        expect(model.downloadUrl.pathSegments.contains('resolve'), isTrue);
+        final resolveIdx = model.downloadUrl.pathSegments.indexOf('resolve');
+        final ref = model.downloadUrl.pathSegments[resolveIdx + 1];
+        expect(ref, isNot('main'),
+            reason: '${model.id} URL must pin an immutable revision');
+        expect(ref.length, 40,
+            reason: '${model.id} revision must be a full git SHA');
+      }
+    });
+
+    test('embedder entry is self-consistent', () {
+      expect(kEmbedderModel.id, 'embedder');
+      expect(kEmbedderModel.fileName, 'qwen3-embedding-0.6b-q5km.gguf');
+      expect(kEmbedderModel.sha256Hex, isNotNull,
+          reason: 'embedder artifact must be checksum-pinned');
+      expect(kEmbedderModel.sha256Hex!.length, 64);
+      expect(kEmbedderModel.sizeBytes, greaterThan(0));
     });
   });
 }
