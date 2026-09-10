@@ -116,9 +116,17 @@ jobs:
             echo "::error::Release keystore secrets are missing. Set ANDROID_RELEASE_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD (see CONTRIBUTING.md)."
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$HOME/release.keystore"
+          # Write the keystore to exactly the path key.properties will point at.
+          # These two must stay in lockstep: a mismatch only surfaces on the
+          # first real release run, after the debug-signed PR path has passed.
+          KEYSTORE_PATH="${{ github.workspace }}/release.keystore"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+          if [ ! -s "$KEYSTORE_PATH" ]; then
+            echo "::error::Decoded keystore at $KEYSTORE_PATH is missing or empty."
+            exit 1
+          fi
           cat > apps/rescate_app/android/key.properties <<EOF
-          storeFile=${{ github.workspace }}/release.keystore
+          storeFile=$KEYSTORE_PATH
           storePassword=$KEYSTORE_PASSWORD
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
