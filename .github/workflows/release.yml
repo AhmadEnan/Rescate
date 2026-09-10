@@ -132,14 +132,18 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
-      - name: Build release APK
+      # Issue #8: publish an ARM64-only artifact. armeabi-v7a has no LLM
+      # runtime (llamadart ships no 32-bit ARM backends) and x86_64 is
+      # emulator-only; --split-per-abi with a single target platform keeps
+      # libapp.so/ABI alignment correct.
+      - name: Build release APK (ARM64)
         run: |
           cd apps/rescate_app
-          flutter build apk --release
+          flutter build apk --release --split-per-abi --target-platform android-arm64
 
       - name: Verify APK signing
         run: |
-          APK=apps/rescate_app/build/app/outputs/flutter-apk/app-release.apk
+          APK=apps/rescate_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           CERTS=$("$APKSIGNER" verify --print-certs "$APK")
           echo "$CERTS"
@@ -153,13 +157,13 @@ jobs:
       - name: Prepare APK artifact
         run: |
           mkdir -p build_output
-          cp apps/rescate_app/build/app/outputs/flutter-apk/app-release.apk build_output/rescate-app-release.apk
+          cp apps/rescate_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build_output/rescate-app-release-arm64.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rescate-app-release
-          path: build_output/rescate-app-release.apk
+          name: rescate-app-release-arm64
+          path: build_output/rescate-app-release-arm64.apk
           retention-days: 14
 
       - name: Set Release Tag
@@ -181,7 +185,7 @@ jobs:
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.RELEASE_NAME }}
-          files: build_output/rescate-app-release.apk
+          files: build_output/rescate-app-release-arm64.apk
           generate_release_notes: true
           draft: false
           prerelease: false

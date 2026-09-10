@@ -20,3 +20,19 @@ workspace:
   - packages/offline_data
   - packages/security_crypto
   - packages/sensor_availability
+
+# Native-assets hook user-defines must live at the workspace ROOT: the Dart
+# hook runner reads userDefines from the workspace resolution, so values
+# placed in apps/rescate_app/pubspec.yaml are silently ignored (issue #8).
+# This entry makes the intent explicit and authoritative: Android arm64 ships
+# the CPU + Vulkan backends (runtime policy picks per device profile), with
+# the full CPU kernel set — `compact` would drop ~8MB of armv8/armv9 kernels
+# but regresses prefill performance on newer cores (see CONTEXT.md).
+hooks:
+  user_defines:
+    llamadart:
+      llamadart_native_backends:
+        platforms:
+          android-arm64:
+            backends: [cpu, vulkan]
+            cpu_profile: full
