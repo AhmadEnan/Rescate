@@ -104,13 +104,15 @@ class RagV3 {
       (byChunkPos[s.chunkId] ??= {})[s.pos] = s;
     }
     final out = <RagHit>[];
-    final used = <int>{};
+    // Dedup key MUST include the chunk identity: pos alone collides across
+    // chunks, which over-suppressed sibling expansion (review round 2).
+    final used = <String>{};
     for (final h in hits) {
       final buf = StringBuffer(h.sentence.text);
       var added = false;
       for (var d = 1; d <= neighbors; d++) {
         for (final p in [h.sentence.pos - d, h.sentence.pos + d]) {
-          final key = h.sentence.pos * 100000 + p;
+          final key = '${h.sentence.chunkId}#${h.sentence.pos}:$p';
           if (used.contains(key)) continue;
           final sib = byChunkPos[h.sentence.chunkId]?[p];
           if (sib != null) {
@@ -121,7 +123,7 @@ class RagV3 {
           }
         }
       }
-      used.add(h.sentence.pos * 100000 + h.sentence.pos);
+      used.add('${h.sentence.chunkId}#${h.sentence.pos}:${h.sentence.pos}');
       out.add(RagHit(
         h.sentence,
         h.score,

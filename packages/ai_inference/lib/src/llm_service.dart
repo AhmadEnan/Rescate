@@ -481,18 +481,18 @@ class LlmService extends ChangeNotifier {
       stepRag?.setData('sources', ragResult.sources);
       stepRag?.setData('v3', queryVec != null);
       stepRag?.setData('triaged', ragResult.triaged);
-      stepRag?.end();
-      Profiler.count('rag.v3.used', queryVec != null ? 1 : 0);
+      stepRag?.setData('prompt_chars', fullPrompt.length);
+      // Token counting is diagnostic-only and must never block a turn. It
+      // runs BEFORE stepRag.end(): setData is a no-op on a closed step.
       if (kProfilerEnabled) {
         try {
           final promptTokens = await _engine!.getTokenCount(fullPrompt);
           stepRag?.setData('prompt_tokens', promptTokens);
           turn?.setData('prompt_tokens', promptTokens);
-        } catch (_) {
-          // Token counting is diagnostic-only and must never block a turn.
-        }
+        } catch (_) {}
       }
-      stepRag?.setData('prompt_chars', fullPrompt.length);
+      stepRag?.end();
+      Profiler.count('rag.v3.used', queryVec != null ? 1 : 0);
 
       const params = GenerationParams(
         temp: LlmDefaults.temperature,
@@ -751,18 +751,18 @@ class LlmService extends ChangeNotifier {
       stepRag?.setData('v3', queryVec != null);
       stepRag?.setData('triaged', ragTriaged);
       stepRag?.setData('ms', ragSw.elapsedMilliseconds);
-      stepRag?.end();
-      Profiler.count('rag.v3.used', queryVec != null ? 1 : 0);
+      stepRag?.setData('prompt_chars', prompt.length);
+      // Token counting runs BEFORE stepRag.end(): setData is a no-op on a
+      // closed step (review round 2).
       if (kProfilerEnabled) {
         try {
           final promptTokens = await _engine!.getTokenCount(prompt);
           stepRag?.setData('prompt_tokens', promptTokens);
           turn?.setData('prompt_tokens', promptTokens);
-        } catch (_) {
-          // Token counting is diagnostic-only and must never block a turn.
-        }
+        } catch (_) {}
       }
-      stepRag?.setData('prompt_chars', prompt.length);
+      stepRag?.end();
+      Profiler.count('rag.v3.used', queryVec != null ? 1 : 0);
 
       const params = GenerationParams(
         temp: LlmDefaults.temperature,

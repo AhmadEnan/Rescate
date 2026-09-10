@@ -14,7 +14,7 @@ import 'rag_v3.dart';
 import 'red_flag_triage.dart';
 import 'triage_context.dart';
 import 'prompt_v3.dart';
-import '../legacy_rag.dart';
+import '../legacy_rag.dart' as legacy;
 
 class RagService {
   RagService._();
@@ -84,6 +84,8 @@ class RagService {
       _rag!.buildContext(queryVec, rawQuery);
 
   /// Test hook: expose the v3 prompt build without touching the singleton.
+  /// [queryVec] may be null — that forces the fallback path, which round-2
+  /// tests exercise (fallback triage).
   ({String prompt, List<String> sources, bool triaged}) buildPromptForTest({
     required String question,
     required Float32List? queryVec,
@@ -91,9 +93,30 @@ class RagService {
     bool enableThinking = false,
   }) {
     final arabic = question.runes.any((c) => c >= 0x0600 && c <= 0x06FF);
-    if (queryVec == null) {
-      throw ArgumentError.value(
-          queryVec, 'queryVec', 'buildPromptForTest requires a non-null vec');
+    if (queryVec == null || !isReady) {
+      // Fallback path (same as buildPromptV3's fallback branch).
+      final chunks = legacy.LegacyRag.search(question, topK: 5);
+      final legacyPrompt = legacy.LegacyRag.buildPrompt(
+        question: question,
+        chunks: chunks,
+        toolDeclarations: toolDeclarations,
+        enableThinking: enableThinking,
+      );
+      final fallbackHits = triageQuery(question);
+      final fallbackFrame = fallbackHits.isEmpty
+          ? ''
+          : escalationFrame(fallbackHits, arabic);
+      final promptWithFrame = fallbackFrame.isEmpty
+          ? legacyPrompt
+          : legacyPrompt.replaceFirst(
+              '<|turn>user\n',
+              '<|turn>user\n$fallbackFrame\n\n',
+            );
+      return (
+        prompt: promptWithFrame,
+        sources: chunks.map((c) => c['source'] as String).toList(),
+        triaged: fallbackHits.isNotEmpty,
+      );
     }
     final ctx = _rag!.buildContext(queryVec, question);
     final prompt = buildGemmaPromptV3(
@@ -109,9 +132,6 @@ class RagService {
       triaged: ctx.hasRedFlag,
     );
   }
-
-  /// Embed via the app's llamadart engine (injected to avoid a hard dep here).
-  final Future<List<double>> Function(String text)? embedText = null;
 
   /// Full search+context. [queryVec] is the embedded user query; when null
   /// (embedder unavailable) falls back to LegacyRag lexical retrieval.
@@ -142,17 +162,30 @@ class RagService {
     }
 
     // Fallback: legacy lexical path (validated, ships in every build).
-    final chunks = LegacyRag.search(question, topK: 5);
-    final legacyPrompt = LegacyRag.buildPrompt(
+    // Triage still runs here — it is pure string matching and needs no
+    // embedder. A fresh install asking about stroke signs MUST get the
+    // escalation frame even before the embedder downloads (review round 2).
+    final chunks = legacy.LegacyRag.search(question, topK: 5);
+    final legacyPrompt = legacy.LegacyRag.buildPrompt(
       question: question,
       chunks: chunks,
       toolDeclarations: toolDeclarations,
       enableThinking: enableThinking,
     );
+    final fallbackHits = triageQuery(question);
+    final fallbackFrame = fallbackHits.isEmpty
+        ? ''
+        : escalationFrame(fallbackHits, arabic);
+    final promptWithFrame = fallbackFrame.isEmpty
+        ? legacyPrompt
+        : legacyPrompt.replaceFirst(
+            '<|turn>user\n',
+            '<|turn>user\n$fallbackFrame\n\n',
+          );
     return (
-      prompt: legacyPrompt,
+      prompt: promptWithFrame,
       sources: chunks.map((c) => c['source'] as String).toList(),
-      triaged: false,
+      triaged: fallbackHits.isNotEmpty,
     );
   }
 

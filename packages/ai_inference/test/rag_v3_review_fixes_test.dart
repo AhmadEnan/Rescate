@@ -246,6 +246,70 @@ void main() {
     });
   });
 
+  group('round 2: fallback path runs triage (no embedder needed)', () {
+    test('fallback stroke query gets escalation frame + triaged=true', () {
+      final rag = RagV3WithTriage(RagV3(_syntheticAssets()));
+      final svc = RagService.forTest(rag);
+      // queryVec = null forces the LegacyRag fallback path.
+      final result = svc.buildPromptForTest(
+        question: 'someone collapsed and not waking up',
+        queryVec: null,
+      );
+      expect(result.triaged, isTrue,
+          reason: 'fallback must run string triage');
+      expect(result.prompt, contains('TRIAGE ALERT'),
+          reason: 'escalation frame must be injected in the fallback path');
+      expect(result.prompt, contains('unresponsive person'));
+    });
+
+    test('fallback benign query stays clean (no frame, triaged=false)', () {
+      final rag = RagV3WithTriage(RagV3(_syntheticAssets()));
+      final svc = RagService.forTest(rag);
+      final result = svc.buildPromptForTest(
+        question: 'what should a basic first aid kit contain',
+        queryVec: null,
+      );
+      expect(result.triaged, isFalse);
+      expect(result.prompt, isNot(contains('TRIAGE ALERT')));
+    });
+  });
+
+  group('round 2: neighbor dedup key is chunk-aware', () {
+    test('same pos in different chunks both expand their own siblings', () {
+      // Two chunks, each with pos 0/1. Old key (pos*100000+p) collided:
+      // the second chunk's hit suppressed its sibling expansion.
+      final sentences = <RagSentence>[
+        const RagSentence(
+            id: 'x0', chunkId: 'cx', source: 'sx', pos: 0, text: 'alpha text'),
+        const RagSentence(
+            id: 'x1', chunkId: 'cx', source: 'sx', pos: 1, text: 'beta sibling'),
+        const RagSentence(
+            id: 'y0', chunkId: 'cy', source: 'sy', pos: 0, text: 'gamma text'),
+        const RagSentence(
+            id: 'y1', chunkId: 'cy', source: 'sy', pos: 1, text: 'delta sibling'),
+      ];
+      final data = Int8List(4 * _dim);
+      final scales = Float32List(4);
+      for (var i = 0; i < 4; i++) {
+        data[i * _dim + i] = 100;
+        scales[i] = 0.01;
+      }
+      final assets = RagAssets(
+        sentences: sentences,
+        vectors: RagVectors(rows: 4, cols: _dim, data: data, scales: scales),
+      );
+      final rag = RagV3(assets);
+      final hits = [
+        RagHit(sentences[0], 1.0), // cx pos0
+        RagHit(sentences[2], 0.9), // cy pos0 — same pos index, other chunk
+      ];
+      final expanded = rag.expandNeighbors(hits, neighbors: 1);
+      expect(expanded[0].expandedText, contains('beta sibling'));
+      expect(expanded[1].expandedText, contains('delta sibling'),
+          reason: 'cross-chunk same-pos hits must NOT suppress each other');
+    });
+  });
+
   group('#5: embedder filename contract', () {
     test('service constant matches the app registry download name', () {
       // The registry (apps/rescate_app/.../known_models.dart) downloads the
