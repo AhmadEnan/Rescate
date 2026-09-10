@@ -1,3 +1,7 @@
+// TODO(security): Nearby connections still run in legacy plaintext mode with
+// auto-accept strategy. Wire Ed25519 ephemeral identity per CONTRIBUTING.md
+// (12h rotation) + E2EE before any production exposure. Tracked so this is
+// not forgotten — removal of the previous inline TODO was accidental.
 import 'dart:convert';
 import 'dart:math';
 import 'package:dev_profiler/dev_profiler.dart';

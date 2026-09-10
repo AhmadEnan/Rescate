@@ -10,7 +10,7 @@ on:
     branches: [ "main" ]
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FLUTTER_CHANNEL: stable
@@ -22,6 +22,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # PR jobs run untrusted code: never hand them a persisted token.
+          persist-credentials: false
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -69,9 +72,16 @@ jobs:
     name: Build, Sign & Publish Release
     needs: analyze-and-test
     runs-on: ubuntu-latest
+    # Publish job is the only place a writable token is granted: it tags and
+    # creates GitHub releases. PR-triggered runs never reach this job
+    # (gated by `if` conditions below), so PR code always sees read-only.
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
