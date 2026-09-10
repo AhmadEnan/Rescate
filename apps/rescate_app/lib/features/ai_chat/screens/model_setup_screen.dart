@@ -236,6 +236,11 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
       _errorMessage = null;
     });
 
+    // Persist the explicit "Use" choice so restart restores THIS model,
+    // not whatever was last imported/downloaded.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPrefsModelPathKey, path);
+
     try {
       // Safe mode forces the loader to start at the CPU-only rung by
       // pre-writing a sticky marker just past the GPU rungs. The loader

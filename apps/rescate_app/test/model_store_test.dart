@@ -297,6 +297,80 @@ void main() {
       await store.deleteModel(outside.path);
       expect(outside.existsSync(), isTrue);
     });
+
+    test('refuses sibling-prefix directory (models-evil)', () async {
+      final store = storeWithFreeBytes(10 << 30);
+      // /<tmp>/models-evil/ is a string-prefix match for /<tmp>/models/
+      // but is NOT inside the sandbox.
+      final evilDir = Directory('${tempRoot.path}/models-evil')
+        ..createSync(recursive: true);
+      final evilModel = File('${evilDir.path}/evil.gguf')
+        ..writeAsBytesSync(ggufBytes(1 << 20));
+      await store.deleteModel(evilModel.path);
+      expect(evilModel.existsSync(), isTrue);
+    });
+
+    test('refuses .. traversal out of the sandbox', () async {
+      final store = storeWithFreeBytes(10 << 30);
+      final source = File('${tempRoot.path}/t.tmp')
+        ..writeAsBytesSync(ggufBytes(1 << 20));
+      final model = await store.importFromTemp(source.path,
+          originalName: 'victim.gguf');
+      final escaped = '${model.path}/../../outside.gguf';
+      await store.deleteModel(escaped);
+      // The traversal target (outside the sandbox) must not exist/be created;
+      // the real model file must be untouched.
+      expect(File(model.path).existsSync(), isTrue);
+      expect(File('${tempRoot.path}/outside.gguf').existsSync(), isFalse);
+    });
+  });
+
+  group('atomic promotion rollback', () {
+    test('sidecar failure removes the promoted model, nothing half-done',
+        () async {
+      // Simulate sidecar write failure: pre-create the sidecar PATH as a
+      // DIRECTORY. writeAsStringSync on a directory path throws, which used
+      // to leave the promoted model behind; the rollback must remove it.
+      final source = File('${tempRoot.path}/r.tmp')
+        ..writeAsBytesSync(ggufBytes(1 << 20));
+      final store = storeWithFreeBytes(10 << 30);
+      // Materialize the sandbox first, then reserve the sidecar PATH as a
+      // directory so the post-rename write throws deterministically.
+      sandbox.createSync(recursive: true);
+      final sidecarDir =
+          Directory('${sandbox.path}/rollback.gguf.sha256')..createSync();
+
+      await expectLater(
+        store.importFromTemp(source.path, originalName: 'rollback.gguf'),
+        throwsA(isA<ModelImportException>()),
+      );
+
+      // The promoted model must NOT survive a failed sidecar write...
+      expect(File('${sandbox.path}/rollback.gguf').existsSync(), isFalse);
+      // ...and no .part residue either.
+      expect(File('${sandbox.path}/rollback.gguf.part').existsSync(), isFalse);
+      sidecarDir.deleteSync();
+    });
+
+    test('detected models expose verified sha only with valid sidecar',
+        () async {
+      final source = File('${tempRoot.path}/s.tmp')
+        ..writeAsBytesSync(ggufBytes(1 << 20));
+      final store = storeWithFreeBytes(10 << 30);
+      final model = await store.importFromTemp(source.path,
+          originalName: 'verified.gguf');
+
+      var models = await store.detectModels();
+      final withSidecar = models.firstWhere((m) => m.fileName == 'verified.gguf');
+      expect(withSidecar.sha256Hex, isNotNull);
+
+      // Delete the sidecar -> sha becomes null (unverified), model still listed.
+      File('${model.path}.sha256').deleteSync();
+      models = await store.detectModels();
+      final withoutSidecar =
+          models.firstWhere((m) => m.fileName == 'verified.gguf');
+      expect(withoutSidecar.sha256Hex, isNull);
+    });
   });
 
   group('importFromPath (migration)', () {

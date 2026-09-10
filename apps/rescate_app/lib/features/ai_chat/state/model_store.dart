@@ -104,11 +104,17 @@ class ModelStore {
       if (!check.ok) return null;
       final length = file.lengthSync();
       if (length <= _kMinPlausibleGgufBytes) return null;
+      // Checksum contract: a model WITHOUT a valid sidecar is still listed
+      // (imports from the picker legitimately have none until written) but
+      // `sha256Hex` stays null — callers can distinguish "verified" models
+      // from "unverified" ones and surface a verify/repair prompt.
+      final digest = _readSidecarDigest(file.path);
+      final verified = digest != null && File('${file.path}.sha256').existsSync();
       return ImportedModel(
         path: file.path,
         fileName: _basename(file.path),
         sizeBytes: length,
-        sha256Hex: _readSidecarDigest(file.path),
+        sha256Hex: verified ? digest : null,
       );
     } catch (_) {
       return null;
@@ -212,12 +218,20 @@ class ModelStore {
         throw ModelImportException('Import was interrupted: copied size mismatch.');
       }
 
-      // Atomic promotion + sidecar.
+      // Atomic promotion + sidecar. Rollback contract: if anything after the
+      // rename fails (sidecar write, etc.), remove the promoted model AND its
+      // sidecar so no half-documented model survives a failed import.
       partFile.renameSync(target.path);
-      File('${target.path}.sha256').writeAsStringSync(
-        '${digestSink.hex}\n$totalBytes\n',
-        flush: true,
-      );
+      try {
+        File('${target.path}.sha256').writeAsStringSync(
+          '${digestSink.hex}\n$totalBytes\n',
+          flush: true,
+        );
+      } catch (_) {
+        _deleteQuietly(target);
+        _deleteQuietly(File('${target.path}.sha256'));
+        rethrow;
+      }
     } on ModelImportException {
       _deleteQuietly(partFile);
       rethrow;
@@ -254,6 +268,12 @@ class ModelStore {
 
   /// Re-verifies a stored model against its sidecar checksum. Expensive
   /// (reads the whole file); offered for explicit integrity checks.
+  ///
+  /// Integrity contract (see README): the sidecar + hash protect against
+  /// ACCIDENTAL corruption (truncated copy, bit rot). They are NOT an
+  /// authenticity proof — GGUF magic bytes are trivially forgeable.
+  /// Authenticity comes from pinning `expectedSha256` at download time
+  /// (see [downloadModel]).
   Future<bool> verifyChecksum(String modelPath) async {
     final sidecar = File('$modelPath.sha256');
     if (!sidecar.existsSync()) return false;
@@ -265,12 +285,47 @@ class ModelStore {
 
   Future<void> deleteModel(String modelPath) async {
     final dir = await modelsDirectory();
-    if (!File(modelPath).parent.path.startsWith(dir.path)) {
-      // Refuse to delete anything outside the sandbox.
+    if (!_isInsideSandbox(modelPath, dir)) {
+      // Refuse to delete anything outside the sandbox. Canonical-path
+      // containment: sibling-prefix paths (`/models-evil/`) and any `..`
+      // segments are rejected, not just string-prefix mismatches.
       return;
     }
     _deleteQuietly(File(modelPath));
     _deleteQuietly(File('$modelPath.sha256'));
+  }
+
+  /// True when [candidate] resolves to an actual child of [dir].
+  ///
+  /// Canonicalizes both paths (resolving symlinks where the target exists)
+  /// and requires [candidate] to be a direct descendant via path-separator
+  /// boundary — so `/support/models-evil/x.gguf` and `/support/models/../x`
+  /// cannot pass a naive prefix check.
+  static bool _isInsideSandbox(String candidate, Directory dir) {
+    String canonical(String p) {
+      try {
+        return File(p).resolveSymbolicLinksSync();
+      } catch (_) {
+        // Target may not exist yet; fall back to normalized absolute path.
+        final abs = File(p).absolute.path;
+        final parts = abs.split(Platform.pathSeparator);
+        final out = <String>[];
+        for (final part in parts) {
+          if (part.isEmpty || part == '.') continue;
+          if (part == '..') {
+            if (out.isNotEmpty) out.removeLast();
+            continue;
+          }
+          out.add(part);
+        }
+        return out.join(Platform.pathSeparator);
+      }
+    }
+
+    final dirPath = canonical(dir.absolute.path);
+    final targetPath = canonical(candidate);
+    final sep = Platform.pathSeparator;
+    return targetPath.startsWith('$dirPath$sep');
   }
 
   // ---- GGUF validation -----------------------------------------------------
