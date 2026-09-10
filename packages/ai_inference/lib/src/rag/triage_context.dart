@@ -64,22 +64,27 @@ class RagV3WithTriage {
     final reserve = (maxTokens * 0.35).toInt();
 
     for (final h in hits) {
-      // The anchor query embeds to _anchorVecCache[flag.id]; force-inject its
-      // top units (see build_context_with_triage in the Python pipeline).
-      final actx = rag.buildContext(
-        _anchorVec(h.flag.id),
-        topK: 6,
-        maxTokens: reserve - injectedTokens,
-        neighbors: 0,
-      );
-      for (final unit in actx.hits) {
-        if (seenSources.contains(unit.sentence.source)) continue;
-        final cost = unit.sentence.text.length / 3.7 + 12;
-        if (injectedTokens + cost > reserve) break;
-        seenSources.add(unit.sentence.source);
-        injectedTokens += cost.toInt();
-        injectedSources.add(unit.sentence.source);
-        injectedHits.add(unit);
+      // Force-inject the flag's emergency guidance via its precomputed anchor
+      // vector. An unregistered anchor (embedder still loading) degrades to
+      // base retrieval — the escalation frame still fires either way.
+      try {
+        final actx = rag.buildContext(
+          _anchorVec(h.flag.id),
+          topK: 6,
+          maxTokens: reserve - injectedTokens,
+          neighbors: 0,
+        );
+        for (final unit in actx.hits) {
+          if (seenSources.contains(unit.sentence.source)) continue;
+          final cost = unit.sentence.text.length / 3.7 + 12;
+          if (injectedTokens + cost > reserve) break;
+          seenSources.add(unit.sentence.source);
+          injectedTokens += cost.toInt();
+          injectedSources.add(unit.sentence.source);
+          injectedHits.add(unit);
+        }
+      } on _AnchorNotRegistered {
+        continue;
       }
     }
 
@@ -114,10 +119,21 @@ class RagV3WithTriage {
   Float32List _anchorVec(String flagId) {
     final v = _anchorVecCache[flagId];
     if (v == null) {
-      throw StateError(
-        'anchor vec for $flagId not registered - embed the anchor queries at startup',
-      );
+      // Graceful degradation: an unregistered anchor (embedder still loading,
+      // or a new flag added without re-embedding) must NEVER crash a triage
+      // turn. Skip force-injection for this flag; base retrieval + the
+      // escalation frame still fire, so the emergency is not dropped.
+      throw _AnchorNotRegistered(flagId);
     }
     return v;
   }
+}
+
+/// Internal: anchor vector not yet registered for a flag.
+class _AnchorNotRegistered implements Exception {
+  final String flagId;
+  _AnchorNotRegistered(this.flagId);
+  @override
+  String toString() =>
+      'anchor vec for $flagId not registered - embed the anchor queries at startup';
 }

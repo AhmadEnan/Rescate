@@ -155,9 +155,11 @@ List<TriageHit> triageQuery(String query) {
   for (final flag in kRedFlags) {
     final matched = <String>[];
     for (final form in flag.forms) {
-      if (q.contains(form) || normalizeArabic(form) == form
-          ? qn.contains(normalizeArabic(form))
-          : false) {
+      // Direct OR, no ternary: match either the raw surface form in the raw
+      // query, or the normalized form in the normalized query. (The previous
+      // ternary bound as (A || B) ? C : false, which made forms that CHANGE
+      // under normalization — e.g. ألم→الم, إصابة→اصابه — unmatchable.)
+      if (q.contains(form) || qn.contains(normalizeArabic(form))) {
         matched.add(form);
       }
     }

@@ -70,21 +70,30 @@ const String kSystemPromptArV3 =
 
 /// Builds the raw Gemma-4 template prompt (thinking disabled, fast prefill).
 /// Mirrors the app's LegacyRag.buildPrompt structure with the v3 system text.
+/// [toolDeclarations] / [enableThinking] match LegacyRag semantics so
+/// tool-enabled turns keep their schemas on the v3 path too.
 String buildGemmaPromptV3({
   required String context,
   required String question,
   required bool arabic,
+  String? toolDeclarations,
+  bool enableThinking = false,
 }) {
-  final system = arabic ? kSystemPromptArV3 : kSystemPromptEnV3;
+  var system = arabic ? kSystemPromptArV3 : kSystemPromptEnV3;
+  if (toolDeclarations != null && toolDeclarations.isNotEmpty) {
+    system = '$system\n\n$toolDeclarations';
+  }
   final user = arabic
       ? 'المرجع الطبي:\n$context\n\nالسؤال: $question'
       : 'MEDICAL REFERENCE:\n$context\n\nQUESTION: $question';
   final fast = arabic
       ? 'السؤال واضح. أجب مباشرة باستخدام المرجع الطبي واذكر الخطوات الفورية الآمنة عند الحاجة.'
       : 'The question is clear. Answer it directly using the medical reference and give safe immediate actions when relevant.';
+  final modelPrefix =
+      enableThinking ? '' : '<|channel>thought\n$fast<channel|>\n';
   return '<|turn>system\n<|think|>\n$system<turn|>\n'
       '<|turn>user\n$user<turn|>\n'
-      '<|turn>model\n<|channel>thought\n$fast<channel|>\n';
+      '<|turn>model\n$modelPrefix';
 }
 
 /// Native chat template path for non-Gemma eval models (used by harness only).

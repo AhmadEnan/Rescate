@@ -34,9 +34,9 @@ class RagService {
       _assets = await RagAssets.load();
       _rag = RagV3WithTriage(RagV3(_assets!));
       _loaded = true;
-      for (final f in kRedFlags) {
-        _anchorVecs[f.id]; // registry key pre-created; vec filled by embedder
-      }
+      // Anchor vectors are filled by registerAnchorVector once the embedder
+      // is up (see EmbedderService.load); triage force-injection degrades to
+      // base retrieval until every flag has its vector.
     } catch (e) {
       debugPrint('RagService: asset load failed, staying on LegacyRag: $e');
       _loaded = false;
@@ -44,13 +44,19 @@ class RagService {
   }
 
   /// Register the anchor vector for a flag after embedding its anchor query.
+  ///
+  /// Delegates to the [RagV3WithTriage] instance itself — it owns the anchor
+  /// registry its buildContext force-injection reads from. The service-side
+  /// mirror below is kept only for `anchorsReady` reporting; the two maps
+  /// must never diverge (this was the P0 wiring bug in review: the service
+  /// filled its own map while triage read an empty cache and threw).
   void registerAnchorVector(String flagId, List<double> vec) {
     final v = Float32List(vec.length);
     for (var i = 0; i < vec.length; i++) {
       v[i] = vec[i];
     }
     _anchorVecs[flagId] = v;
-    _rag?.rag; // rag instance holds no anchor state; registry is local
+    _rag?.registerAnchorVec(flagId, v);
   }
 
   /// Anchor query vector lookup used by [buildPromptV3]'s force-injection.
@@ -58,6 +64,51 @@ class RagService {
 
   bool get anchorsReady =>
       kRedFlags.every((f) => _anchorVecs.containsKey(f.id));
+
+  // ---- test-only surface (review-required wiring tests) -------------------
+
+  /// Build a service around a caller-supplied [RagV3WithTriage] so anchor
+  /// wiring can be tested without a live embedder.
+  factory RagService.forTest(RagV3WithTriage rag) {
+    final svc = RagService._();
+    svc._rag = rag;
+    svc._loaded = true;
+    return svc;
+  }
+
+  /// Test hook: expose buildContext on the service's triage instance.
+  TriageAugmentedContext buildContextForTest(
+    Float32List queryVec,
+    String rawQuery,
+  ) =>
+      _rag!.buildContext(queryVec, rawQuery);
+
+  /// Test hook: expose the v3 prompt build without touching the singleton.
+  ({String prompt, List<String> sources, bool triaged}) buildPromptForTest({
+    required String question,
+    required Float32List? queryVec,
+    String? toolDeclarations,
+    bool enableThinking = false,
+  }) {
+    final arabic = question.runes.any((c) => c >= 0x0600 && c <= 0x06FF);
+    if (queryVec == null) {
+      throw ArgumentError.value(
+          queryVec, 'queryVec', 'buildPromptForTest requires a non-null vec');
+    }
+    final ctx = _rag!.buildContext(queryVec, question);
+    final prompt = buildGemmaPromptV3(
+      context: ctx.contextWithFrame,
+      question: question,
+      arabic: arabic,
+      toolDeclarations: toolDeclarations,
+      enableThinking: enableThinking,
+    );
+    return (
+      prompt: prompt,
+      sources: ctx.base.sources,
+      triaged: ctx.hasRedFlag,
+    );
+  }
 
   /// Embed via the app's llamadart engine (injected to avoid a hard dep here).
   final Future<List<double>> Function(String text)? embedText = null;
@@ -78,6 +129,10 @@ class RagService {
         context: ctx.contextWithFrame,
         question: question,
         arabic: arabic,
+        // Tool schemas must survive the v3 path — tool-enabled turns lose
+        // their declarations otherwise (review item #4).
+        toolDeclarations: toolDeclarations,
+        enableThinking: enableThinking,
       );
       return (
         prompt: prompt,

@@ -20,8 +20,11 @@ class EmbedderService {
   EmbedderService._();
   static final EmbedderService instance = EmbedderService._();
 
-  static const String kEmbedderRepo = 'openbmb/Qwen3-Embedding-0.6B-GGUF';
-  static const String kEmbedderFile = 'Qwen3-Embedding-0.6B-Q4_K_M.gguf';
+  // File name contract: the app's known-models registry (apps/rescate_app/
+  // lib/features/ai_chat/state/known_models.dart) downloads the embedder
+  // under EXACTLY this name; download and load resolve through the same
+  // constant so they can never diverge (review item #5).
+  static const String kEmbedderFile = 'qwen3-embedding-0.6b-q5km.gguf';
   static const int kExpectedDim = 1024;
 
   LlamaEngine? _engine;

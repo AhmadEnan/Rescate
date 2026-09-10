@@ -14,7 +14,15 @@ class RagHit {
   final RagSentence sentence;
   final double score;
   final bool hasNeighbors;
-  const RagHit(this.sentence, this.score, {this.hasNeighbors = false});
+  /// Sentence text merged with its same-chunk neighbors (when [hasNeighbors]).
+  /// Null when no neighbors were merged; buildContext renders this so sibling
+  /// content actually reaches the model context.
+  final String? expandedText;
+  const RagHit(this.sentence, this.score,
+      {this.hasNeighbors = false, this.expandedText});
+
+  /// The text to render into context: expanded when available.
+  String get renderedText => expandedText ?? sentence.text;
 }
 
 class RagV3Context {
@@ -114,7 +122,15 @@ class RagV3 {
         }
       }
       used.add(h.sentence.pos * 100000 + h.sentence.pos);
-      out.add(RagHit(h.sentence, h.score, hasNeighbors: added));
+      out.add(RagHit(
+        h.sentence,
+        h.score,
+        hasNeighbors: added,
+        // Sibling text MUST reach the context: the whole point of expansion
+        // (e.g. the seizure "recovery position" sibling). buildContext reads
+        // this instead of re-reading the bare sentence.
+        expandedText: buf.toString(),
+      ));
     }
     return out;
   }
@@ -128,7 +144,7 @@ class RagV3 {
     final sources = <String>[];
     var used = 0.0;
     for (var i = 0; i < expanded.length; i++) {
-      final t = expanded[i].sentence.text;
+      final t = expanded[i].renderedText;
       final cost = t.length / 3.7 + 12;
       if (used + cost > maxTokens) continue;
       lines.add('- $t [${lines.length + 1}]');
