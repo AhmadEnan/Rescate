@@ -203,7 +203,7 @@ class LlmLoadDiagnostics {
       final File file = File(path);
       if (!await file.exists()) return '';
       final int len = await file.length();
-      if (len <= maxBytes) return file.readAsString();
+      if (len <= maxBytes) return await file.readAsString();
       final RandomAccessFile raf = await file.open();
       try {
         await raf.setPosition(len - maxBytes);

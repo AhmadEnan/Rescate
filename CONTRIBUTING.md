@@ -53,7 +53,49 @@ Before you open a PR against `develop`, ensure:
 3. **No UI State Leakage**: State management should be local to the `feature/` folder in the app, or provided globally via core.
 4. **Security Check**: Did you touch keys or data? Ensure Ed25519 identities remain ephemeral (12h rotation) and SQFlite is wrapped in SQLCipher.
 
-## 5. C/C++ Binding Guidelines
+## 5. Release Signing & CI Gate 🔐
+
+Release APKs are signed with a dedicated keystore that is **never** committed.
+CI enforces this on every push/tag run (see `.github/workflows/release.yml`):
+
+* PR runs build a debug-signed artifact for review only — they never publish.
+* Push/tag runs require the real keystore and refuse to publish a
+  debug-signed APK.
+
+### Generating a release keystore (one-time, owner only)
+
+```bash
+keytool -genkeypair -v \
+  -keystore rescate-release.keystore \
+  -alias rescate \
+  -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Store the `.keystore` file and its passwords in a password manager, then add
+these **repository secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_RELEASE_KEYSTORE_BASE64` | `base64 -w0 rescate-release.keystore` output |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore password |
+| `ANDROID_KEY_ALIAS` | e.g. `rescate` |
+| `ANDROID_KEY_PASSWORD` | key password |
+
+### Signing release builds locally
+
+Create `apps/rescate_app/android/key.properties` (gitignored):
+
+```properties
+storeFile=/absolute/path/to/rescate-release.keystore
+storePassword=...
+keyAlias=rescate
+keyPassword=...
+```
+
+`flutter build apk --release` picks it up automatically. Without the file the
+build falls back to debug signing for local development only.
+
+## 6. C/C++ Binding Guidelines
 If you are tweaking `llama.cpp` or Audio engines:
 * Modify the C/C++ code inside `packages/[name]/src`.
 * Ensure `CMakeLists.txt` builds cleanly for both ARM64 Android and iOS.

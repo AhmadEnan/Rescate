@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -37,9 +38,6 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
             // R8 minification needs explicit -dontwarn rules for JDK AWT /
             // ImageIO classes pulled transitively by GraphHopper (via Apache
             // XmlGraphics Commons). Those code paths are never executed on
@@ -48,6 +46,30 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Release signing (issue #18): keystore config lives in
+            // android/key.properties (gitignored), provisioned locally or
+            // injected by CI from GitHub secrets. Without a keystore we fall
+            // back to debug signing so `flutter run --release` keeps working
+            // for local development; CI refuses to publish in that state.
+            val keystoreProperties = Properties()
+            val keystorePropertiesFile = rootProject.file("key.properties")
+            if (keystorePropertiesFile.exists()) {
+                keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+                fun req(key: String): String =
+                    keystoreProperties.getProperty(key)
+                        ?: throw GradleException("key.properties is missing '$key'")
+                signingConfigs {
+                    create("release") {
+                        keyAlias = req("keyAlias")
+                        keyPassword = req("keyPassword")
+                        storeFile = rootProject.file(req("storeFile"))
+                        storePassword = req("storePassword")
+                    }
+                }
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 }

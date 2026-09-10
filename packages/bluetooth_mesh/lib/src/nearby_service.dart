@@ -1,4 +1,8 @@
-// TODO(security): wire Ed25519 ephemeral identity per CONTRIBUTING.md
+// SECURITY-NOTE(security): Nearby connections still run in legacy plaintext
+// mode with auto-accept strategy. Wire Ed25519 ephemeral identity per
+// CONTRIBUTING.md (12h rotation) + E2EE before any production exposure.
+// Tracked so this is not forgotten - the prior inline comment was dropped
+// accidentally during the lint sweep.
 import 'dart:convert';
 import 'dart:math';
 import 'package:dev_profiler/dev_profiler.dart';

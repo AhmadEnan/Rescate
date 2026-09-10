@@ -11,8 +11,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
-
   void _showLanguageSelector(BuildContext context, AppState appState) {
     showModalBottomSheet(
       context: context,

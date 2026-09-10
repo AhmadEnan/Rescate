@@ -135,7 +135,6 @@ class _BiometricDetailScreenState extends State<BiometricDetailScreen> {
   static const Color _bg = Color(0xFFF5EFE6);
   static const Color _red = Color(0xFFA11F2B);
   static const Color _textDark = Color(0xFF202020);
-  static const Color _cardBg = Color(0xFFD9D0C7);
 
   @override
   Widget build(BuildContext context) {
