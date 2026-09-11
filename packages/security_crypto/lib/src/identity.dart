@@ -89,6 +89,10 @@ class ResponderKeys {
       bytesToHex(_identitySeed) == bytesToHex(other._identitySeed) &&
       bytesToHex(_kxSeed) == bytesToHex(other._kxSeed);
 
+  /// SECRET. Contains both raw private seeds — the responder's entire
+  /// identity. This is the secure-storage serialization only: it must never
+  /// be written to a file, logged, or sent over the wire. See
+  /// [ConsultKeyStore.saveResponderKeys].
   Map<String, dynamic> toJson() => <String, dynamic>{
         'version': 1,
         'type': 'rescate_responder_keys',

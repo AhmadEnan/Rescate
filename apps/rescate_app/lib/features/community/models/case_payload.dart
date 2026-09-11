@@ -11,7 +11,7 @@ class CasePayload {
     required this.note,
     this.symptoms = const <String>[],
     this.vitals = const <String>[],
-    this.includeLocation = false,
+    this.urgency = '',
     this.latitude,
     this.longitude,
     required this.createdAt,
@@ -20,16 +20,27 @@ class CasePayload {
   final String note;
   final List<String> symptoms;
   final List<String> vitals; // pre-formatted "Heart rate: 88 bpm" lines
-  final bool includeLocation;
+
+  /// Free-text triage hint from the AI tool ("critical", "urgent"). Empty
+  /// when the patient built the payload by hand.
+  final String urgency;
+
   final double? latitude;
   final double? longitude;
   final DateTime createdAt;
+
+  /// Derived, never stored: a payload carries a location exactly when it has
+  /// coordinates. Consent alone is not enough — the position read has to have
+  /// succeeded — and a payload must never announce a location it does not
+  /// contain (issue #17 review).
+  bool get includeLocation => latitude != null && longitude != null;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'version': 1,
         'note': note,
         'symptoms': symptoms,
         'vitals': vitals,
+        if (urgency.isNotEmpty) 'urgency': urgency,
         'include_location': includeLocation,
         if (latitude != null) 'lat': latitude,
         if (longitude != null) 'lng': longitude,
@@ -38,12 +49,15 @@ class CasePayload {
 
   String encode() => jsonEncode(toJson());
 
+  /// `include_location` on the wire is informational only — the receiver
+  /// derives it from the coordinates actually present, so a sender that
+  /// claims a location it did not send cannot make the inbox show one.
   static CasePayload fromJson(Map<String, dynamic> json) => CasePayload(
         note: json['note'] as String? ?? '',
         symptoms:
             (json['symptoms'] as List<dynamic>?)?.cast<String>() ?? const [],
         vitals: (json['vitals'] as List<dynamic>?)?.cast<String>() ?? const [],
-        includeLocation: json['include_location'] as bool? ?? false,
+        urgency: json['urgency'] as String? ?? '',
         latitude: (json['lat'] as num?)?.toDouble(),
         longitude: (json['lng'] as num?)?.toDouble(),
         createdAt:

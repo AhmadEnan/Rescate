@@ -47,15 +47,70 @@ class _ResponderSetupScreenState extends State<ResponderSetupScreen> {
           .createBadgeRequest(displayName: name);
       setState(() {
         _requestPath = path;
-        _message = 'Request saved to:\n$path\n\n'
-            'Send it to the Rescate medical authority (share button below, '
-            'WhatsApp/email/USB) to be signed.';
+        _message = 'Request file ready. Use “Share request file…” below to '
+            'send it to the Rescate medical authority (WhatsApp, email, USB) '
+            'to be signed.\n\nStored privately on this device:\n$path';
       });
     } catch (e) {
       setState(() => _message = 'Failed: $e');
     } finally {
       setState(() => _busy = false);
     }
+  }
+
+  /// The stored badge failed its startup re-check, so this device is not in
+  /// responder mode even though it was set up before. Say why.
+  Widget _restoreErrorBanner(String reason) {
+    const explanations = <String, String>{
+      'badge_expired': 'Your badge has expired. Request a new one from the '
+          'medical authority.',
+      'badge_signature_invalid': 'The stored badge file is not correctly '
+          'signed by the medical authority — it may have been altered.',
+      'identity_key_mismatch': 'The stored badge does not match this device’s '
+          'keys. Create a new request and import the badge issued for it.',
+      'key_exchange_key_mismatch':
+          'The stored badge does not match this device’s keys. Create a new '
+          'request and import the badge issued for it.',
+      'no_local_keys': 'This device’s responder keys are no longer available '
+          '(secure storage was cleared). Create a new badge request.',
+    };
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4E5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.orange.shade400),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(LucideIcons.shieldAlert, color: Colors.orange.shade800, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Responder mode is off',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  explanations[reason] ??
+                      'The stored badge could not be verified ($reason).',
+                  style: const TextStyle(fontSize: 12.5, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _importBadge() async {
@@ -122,6 +177,7 @@ class _ResponderSetupScreenState extends State<ResponderSetupScreen> {
   Widget build(BuildContext context) {
     final consult = ConsultState.instance;
     final badge = consult.credential;
+    final restoreError = consult.badgeRestoreError;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -140,6 +196,8 @@ class _ResponderSetupScreenState extends State<ResponderSetupScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (badge == null && restoreError != null)
+            _restoreErrorBanner(restoreError),
           if (badge != null) ...[
             _BadgeCard(credential: badge),
             const SizedBox(height: 14),

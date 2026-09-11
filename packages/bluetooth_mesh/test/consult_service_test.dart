@@ -23,10 +23,13 @@ class InMemoryWire {
 }
 
 class _Pipe {
-  final StreamController<Uint8List> _controller =
-      StreamController.broadcast();
   Uint8List? lastSent;
   void Function(String endpointId, Uint8List bytes)? listener;
+  void Function(String endpointId)? disconnectListener;
+
+  /// When true, [_Transport.sendBytes] fails the way Nearby does once the
+  /// endpoint is gone.
+  bool unreachable = false;
 
   void deliver(Uint8List bytes) {
     lastSent = bytes;
@@ -44,10 +47,29 @@ class _Transport implements ConsultTransport {
       _own.listener = callback;
 
   @override
+  set onDisconnected(void Function(String endpointId)? callback) =>
+      _own.disconnectListener = callback;
+
+  @override
   Future<void> sendBytes(String endpointId, Uint8List bytes) async {
+    if (_own.unreachable) {
+      throw StateError('endpoint $endpointId is not connected');
+    }
     _own.lastSent = bytes;
     _remote.deliver(bytes);
   }
+
+  /// Stands in for NearbyService's `onDisconnected` callback firing.
+  void simulateTransportLoss({bool unreachable = true}) {
+    _own.unreachable = unreachable;
+    _own.disconnectListener?.call('peer');
+  }
+
+  /// Drops frames without telling anyone — the silent-failure case that made
+  /// "sent" a lie.
+  void breakSilently() => _own.unreachable = true;
+
+  void restore() => _own.unreachable = false;
 }
 
 /// The handshake spans several async hops (hello → cert → verify → accept);
@@ -151,5 +173,66 @@ void main() {
 
     expect(patient.isVerified('peer'), isFalse);
     expect(result, isNull); // silence — no session, no data ever flows
+  });
+
+  test('transport loss tears the session down and a fresh handshake works',
+      () async {
+    await patient.beginHandshake('peer');
+    await waitUntilVerified(patient);
+    expect(patient.isVerified('peer'), isTrue);
+
+    var closed = false;
+    patient.onPeerClosed = (id) => closed = true;
+
+    // The radio link drops on both ends, as Nearby reports it.
+    wire.sideA.simulateTransportLoss();
+    wire.sideB.simulateTransportLoss();
+
+    expect(patient.isVerified('peer'), isFalse,
+        reason: 'a peer whose transport is gone must not stay verified');
+    expect(patient.verifiedCredential('peer'), isNull);
+    expect(responder.isVerified('peer'), isFalse);
+    expect(closed, isTrue, reason: 'the UI has to hear about the teardown');
+
+    // Peer comes back: beginHandshake must not be a no-op this time.
+    wire.sideA.restore();
+    wire.sideB.restore();
+    await patient.beginHandshake('peer');
+    await waitUntilVerified(patient);
+
+    expect(patient.isVerified('peer'), isTrue);
+    expect(patient.verifiedCredential('peer')!.name, 'Dr. Ahmed Hassan');
+    expect(await patient.sendText('peer', 'still here'), isTrue);
+  });
+
+  test('a send that never leaves the device reports false, not sent', () async {
+    await patient.beginHandshake('peer');
+    await waitUntilVerified(patient);
+
+    // Endpoint dies without Nearby reporting a disconnect yet — the session
+    // still exists, but the frame cannot go out.
+    wire.sideA.breakSilently();
+
+    expect(
+      await patient.sendPayload('peer', ConsultPayloadType.casePayload,
+          utf8.encode('{"note":"burn, left hand"}')),
+      isFalse,
+      reason: 'a patient must never be told an undelivered case was sent',
+    );
+    expect(await patient.sendText('peer', 'hello?'), isFalse);
+  });
+
+  test('handshake teardown mid-flight leaves no pending state', () async {
+    await patient.beginHandshake('peer');
+    // Kill the link before the CERT reply can be processed.
+    wire.sideA.simulateTransportLoss();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(patient.isVerified('peer'), isFalse);
+
+    wire.sideA.restore();
+    await patient.beginHandshake('peer');
+    await waitUntilVerified(patient);
+    expect(patient.isVerified('peer'), isTrue);
   });
 }

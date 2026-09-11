@@ -5,17 +5,16 @@
 // LlmService at boot via LlmService.attachToolRegistry.
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:ai_inference/ai_inference.dart';
 import 'package:biometric_estimators/biometric_estimators.dart';
 import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/material.dart';
 import 'package:offline_data/offline_data.dart';
-import 'package:security_crypto/security_crypto.dart' show ConsultPayloadType;
 import 'package:sensor_availability/sensor_availability.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../community/models/case_payload.dart';
 import '../../community/services/consult_state.dart';
 
 /// Signal raised by [_showCprTutorial]. Read and drained by [LlmState] when
@@ -207,7 +206,10 @@ class RescateToolDispatcher {
     // Issue #17: help requests go only to badge-verified responders, over
     // the encrypted consult session, after explicit user consent.
     final consult = ConsultState.instance;
-    final verifiedIds = consult.verifiedEndpoints.toList(growable: false);
+    // verifiedPeers — not verifiedEndpoints. On a responder device the open
+    // sessions belong to *patients*, who hold no badge; pushing a case
+    // summary down those would send patient data to other patients.
+    final verifiedIds = consult.verifiedPeers.keys.toList(growable: false);
     if (verifiedIds.isEmpty) {
       return <String, Object?>{
         'verified_responders': 0,
@@ -250,18 +252,40 @@ class RescateToolDispatcher {
       return <String, Object?>{'declined': true};
     }
 
+    // A structured case payload, not a text line: that is what lands in the
+    // responder's inbox with accept/decline. A plain text frame only shows up
+    // in the chat transcript, which is why this tool used to report "sent"
+    // with no request anywhere (issue #17 review).
+    final payload = CasePayload(
+      note: summary,
+      urgency: urgency,
+      createdAt: DateTime.now(),
+    );
     var sent = 0;
+    final failed = <String>[];
     for (final id in verifiedIds) {
-      final ok = await consult.sendPayload(
-        id,
-        ConsultPayloadType.text,
-        utf8.encode('[HELP $urgency] $summary'),
-      );
-      if (ok) sent++;
+      if (await consult.sendCasePayload(id, payload)) {
+        sent++;
+      } else {
+        failed.add(id);
+      }
+    }
+    if (sent == 0) {
+      // Nothing reached a responder — say so rather than claiming success.
+      return <String, Object?>{
+        'verified_responders': verifiedIds.length,
+        'requests_sent': 0,
+        'status': 'send_failed',
+        'guidance_for_model':
+            'The request could not be delivered to any responder. Continue '
+            'with first-aid guidance and recommend contacting emergency '
+            'services.',
+      };
     }
     return <String, Object?>{
       'verified_responders': verifiedIds.length,
       'requests_sent': sent,
+      'delivery_failures': failed.length,
       'status': 'sent',
     };
   }

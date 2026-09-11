@@ -12,10 +12,12 @@
 ///  - [BadgeRequest] / [ResponderCredential]: the ID badge and its issuance.
 ///  - [PatientHandshake] / [ResponderHandshake]: transcript-bound handshake.
 ///  - [ConsultSession]: sealed frames with replay protection.
-///  - [ConsultKeyStore]: file persistence for keys and badge.
+///  - [ConsultKeyStore]: badge persistence; private seeds go to a
+///    [SecretStore] (platform secure storage), never to a file.
 library security_crypto;
 
 export 'src/credential.dart';
 export 'src/identity.dart';
 export 'src/key_store.dart';
+export 'src/secret_store.dart';
 export 'src/session.dart';

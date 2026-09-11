@@ -3,6 +3,7 @@
 // reachable from a badge-verified session (the state layer refuses
 // otherwise).
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -14,11 +15,64 @@ class CasePayloadSheetResult {
   final CasePayload payload;
 }
 
+/// Outcome of trying to read the patient's position after they consented.
+/// [reason] is null on success and a UI-ready sentence otherwise.
+class LocationReadResult {
+  const LocationReadResult.success(this.latitude, this.longitude)
+      : reason = null;
+  const LocationReadResult.failure(this.reason)
+      : latitude = null,
+        longitude = null;
+
+  final double? latitude;
+  final double? longitude;
+  final String? reason;
+
+  bool get ok => latitude != null && longitude != null;
+}
+
+/// Injected in tests; on device this is [readDeviceLocation].
+typedef LocationReader = Future<LocationReadResult> Function();
+
+/// Requests permission and reads one position. Every failure path returns a
+/// reason instead of throwing, because a consult must never be blocked by
+/// location trouble — the payload just goes out without coordinates.
+Future<LocationReadResult> readDeviceLocation() async {
+  try {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      return const LocationReadResult.failure(
+          'Location is turned off on this device.');
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied) {
+      return const LocationReadResult.failure('Location permission denied.');
+    }
+    if (permission == LocationPermission.deniedForever) {
+      return const LocationReadResult.failure(
+          'Location permission is permanently denied — enable it in Settings.');
+    }
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 8),
+      ),
+    );
+    return LocationReadResult.success(position.latitude, position.longitude);
+  } catch (e) {
+    return const LocationReadResult.failure(
+        'Could not get a location fix right now.');
+  }
+}
+
 /// [availableVitals] lines are pre-formatted "Heart rate: 88 bpm" strings.
 Future<CasePayloadSheetResult?> showCasePayloadSheet(
   BuildContext context, {
   required String responderName,
   required List<String> availableVitals,
+  LocationReader locationReader = readDeviceLocation,
 }) {
   return showModalBottomSheet<CasePayloadSheetResult>(
     context: context,
@@ -27,6 +81,7 @@ Future<CasePayloadSheetResult?> showCasePayloadSheet(
     builder: (_) => _CasePayloadSheet(
       responderName: responderName,
       availableVitals: availableVitals,
+      locationReader: locationReader,
     ),
   );
 }
@@ -35,10 +90,12 @@ class _CasePayloadSheet extends StatefulWidget {
   const _CasePayloadSheet({
     required this.responderName,
     required this.availableVitals,
+    required this.locationReader,
   });
 
   final String responderName;
   final List<String> availableVitals;
+  final LocationReader locationReader;
 
   @override
   State<_CasePayloadSheet> createState() => _CasePayloadSheetState();
@@ -48,6 +105,14 @@ class _CasePayloadSheetState extends State<_CasePayloadSheet> {
   final TextEditingController _noteController = TextEditingController();
   late final List<bool> _vitalSelected;
   bool _includeLocation = false;
+  bool _locatingNow = false;
+
+  /// Set only from a successful read while consent was on. Cleared the moment
+  /// consent goes off, so the payload can never carry a stale position.
+  double? _latitude;
+  double? _longitude;
+  String? _locationError;
+
   static const List<String> _symptomOptions = [
     'Unconscious',
     'Not breathing',
@@ -203,12 +268,13 @@ class _CasePayloadSheetState extends State<_CasePayloadSheet> {
               // ── Location ─────────────────────────────────
               SwitchListTile(
                 value: _includeLocation,
-                onChanged: (v) => setState(() => _includeLocation = v),
+                onChanged: _locatingNow ? null : _onLocationConsentChanged,
                 title: Text(
                   'Include my location',
                   style: GoogleFonts.inter(
                       fontSize: 13, fontWeight: FontWeight.w600),
                 ),
+                subtitle: _locationSubtitle(),
                 contentPadding: EdgeInsets.zero,
                 activeColor: AppColors.primaryRed,
               ),
@@ -219,7 +285,7 @@ class _CasePayloadSheetState extends State<_CasePayloadSheet> {
                   backgroundColor: AppColors.primaryRed,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                onPressed: _send,
+                onPressed: _locatingNow ? null : _send,
                 child: Text(
                   'Send consult request',
                   style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
@@ -236,6 +302,78 @@ class _CasePayloadSheetState extends State<_CasePayloadSheet> {
     );
   }
 
+  /// Tells the patient exactly what the switch achieved: a real fix, a
+  /// failure with its reason, or work in progress. Without this the toggle
+  /// looks on while no coordinates exist.
+  Widget? _locationSubtitle() {
+    if (_locatingNow) {
+      return Row(
+        children: [
+          const SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+          Text('Getting your location…',
+              style: GoogleFonts.inter(fontSize: 11.5)),
+        ],
+      );
+    }
+    if (_locationError != null) {
+      return Text(
+        '$_locationError Your consult will be sent without a location.',
+        style: GoogleFonts.inter(
+            fontSize: 11.5, color: Colors.orange.shade900, height: 1.3),
+      );
+    }
+    if (_latitude != null && _longitude != null) {
+      return Text(
+        '${_latitude!.toStringAsFixed(5)}, ${_longitude!.toStringAsFixed(5)}',
+        style: GoogleFonts.inter(
+            fontSize: 11.5, color: AppColors.textDark.withValues(alpha: 0.6)),
+      );
+    }
+    return null;
+  }
+
+  /// Consent is not a location. Turning the switch on asks for permission and
+  /// reads a position; only a successful read arms the coordinates, and a
+  /// denial puts the switch back off with the reason shown (issue #17
+  /// review).
+  Future<void> _onLocationConsentChanged(bool wanted) async {
+    if (!wanted) {
+      setState(() {
+        _includeLocation = false;
+        _latitude = null;
+        _longitude = null;
+        _locationError = null;
+      });
+      return;
+    }
+    setState(() {
+      _includeLocation = true;
+      _locatingNow = true;
+      _locationError = null;
+    });
+    final result = await widget.locationReader();
+    if (!mounted) return;
+    setState(() {
+      _locatingNow = false;
+      if (result.ok) {
+        _latitude = result.latitude;
+        _longitude = result.longitude;
+      } else {
+        // No position, so no consent to act on — the switch must not sit on
+        // implying a location is attached.
+        _includeLocation = false;
+        _latitude = null;
+        _longitude = null;
+        _locationError = result.reason;
+      }
+    });
+  }
+
   void _send() {
     Navigator.of(context).pop(
       CasePayloadSheetResult(
@@ -246,7 +384,10 @@ class _CasePayloadSheetState extends State<_CasePayloadSheet> {
             for (var i = 0; i < widget.availableVitals.length; i++)
               if (_vitalSelected[i]) widget.availableVitals[i],
           ],
-          includeLocation: _includeLocation,
+          // Both or neither: CasePayload.includeLocation is derived from
+          // these, so there is no way to claim a location without one.
+          latitude: _includeLocation ? _latitude : null,
+          longitude: _includeLocation ? _longitude : null,
           createdAt: DateTime.now(),
         ),
       ),

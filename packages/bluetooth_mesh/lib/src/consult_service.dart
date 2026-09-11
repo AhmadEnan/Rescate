@@ -23,6 +23,11 @@ abstract class ConsultTransport {
 
   /// Deliver incoming raw bytes from a connected peer to the service.
   set onBytes(void Function(String endpointId, Uint8List bytes)? callback);
+
+  /// Fired when the underlying connection to a peer goes away, so the
+  /// service can tear the session down instead of leaving it "verified"
+  /// with keys nobody can use (issue #17 review).
+  set onDisconnected(void Function(String endpointId)? callback);
 }
 
 /// Outcome of a patient-side handshake attempt.
@@ -36,6 +41,7 @@ class ConsultService extends ChangeNotifier {
         _authorityPublicKey =
             authorityPublicKey ?? ConsultAuthority.defaultPublicKey().bytes {
     transport.onBytes = _onBytes;
+    transport.onDisconnected = handlePeerDisconnected;
   }
 
   final ConsultTransport _transport;
@@ -105,14 +111,39 @@ class ConsultService extends ChangeNotifier {
     _pendingResponderHandshakes.remove(endpointId);
     if (notifyPeer) {
       unawaited(_transport.sendBytes(endpointId,
-          ConsultFrame(ConsultFrameType.close, const []).encode()));
+              ConsultFrame(ConsultFrameType.close, const []).encode())
+          .catchError((Object _) {
+        // Peer is already unreachable — the local teardown below is what
+        // matters.
+      }));
     }
     onPeerClosed?.call(endpointId);
     notifyListeners();
   }
 
+  /// The transport lost this peer. Drop the session immediately: keeping it
+  /// would leave [isVerified] true for a device that is gone, and would make
+  /// [beginHandshake] a no-op on reconnect (it skips endpoints that already
+  /// have a session), so the peer could never re-verify. No close frame —
+  /// there is nothing to send it to.
+  void handlePeerDisconnected(String endpointId) {
+    if (!_sessions.containsKey(endpointId) &&
+        !_pendingHandshakes.containsKey(endpointId) &&
+        !_pendingResponderHandshakes.containsKey(endpointId)) {
+      return;
+    }
+    debugPrint('[consult] peer disconnected → tearing down session '
+        '$endpointId');
+    Profiler.count('mesh.consult.sessions.dropped', 1);
+    closeSession(endpointId, notifyPeer: false);
+  }
+
   /// Sends application data over a verified session. Patient data
   /// ([ConsultPayloadType.casePayload]) is refused on unverified sessions.
+  ///
+  /// Returns false — never true — when the transport cannot deliver the
+  /// frame, so callers never tell a patient their case was sent when it was
+  /// not.
   Future<bool> sendPayload(
     String endpointId,
     ConsultPayloadType type,
@@ -124,10 +155,16 @@ class ConsultService extends ChangeNotifier {
       return false; // hard trust gate
     }
     final sealed = await session.seal(type, payload);
-    await _transport.sendBytes(
-      endpointId,
-      ConsultFrame(ConsultFrameType.data, [type.toByte(), ...sealed]).encode(),
-    );
+    try {
+      await _transport.sendBytes(
+        endpointId,
+        ConsultFrame(ConsultFrameType.data, [type.toByte(), ...sealed]).encode(),
+      );
+    } catch (e) {
+      debugPrint('[consult] send FAILED $endpointId: $e');
+      Profiler.count('mesh.consult.frames.failed', 1);
+      return false;
+    }
     Profiler.count('mesh.consult.frames.sent', 1);
     return true;
   }

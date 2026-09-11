@@ -49,9 +49,6 @@ dependencies:
   # Hands the badge request out via the system share sheet (issue #17) so no
   # broad storage permission is needed — see issue #24's direction.
   share_plus: ^10.0.0
-  # Responder Ed25519/X25519 private seeds live in the Android Keystore /
-  # iOS Keychain, never in the app's JSON files (issue #17).
-  flutter_secure_storage: ^9.2.2
 
   sensor_availability:
     path: ../../packages/sensor_availability

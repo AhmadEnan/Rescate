@@ -248,7 +248,11 @@ void main() {
     final badge = await issueBadge(authority, responder);
 
     final store = ConsultKeyStore(
-        '${Directory.systemTemp.path}/rescate_test_${DateTime.now().microsecondsSinceEpoch}');
+      '${Directory.systemTemp.path}/rescate_test_${DateTime.now().microsecondsSinceEpoch}',
+      // Seeds live in platform secure storage, which has no host
+      // implementation — see key_store_test.dart for the storage rules.
+      secrets: InMemorySecretStore(),
+    );
     await store.saveResponderKeys(responder);
     await store.saveCredential(badge);
 

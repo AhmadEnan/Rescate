@@ -177,6 +177,24 @@ class _ResponderInboxScreenState extends State<ResponderInboxScreen> {
                               .toList(),
                         ),
                       ],
+                      if (payload.urgency.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(LucideIcons.triangleAlert,
+                                size: 13, color: Colors.orange.shade800),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Urgency: ${payload.urgency}',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.orange.shade900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       if (payload.note.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         Text(payload.note,

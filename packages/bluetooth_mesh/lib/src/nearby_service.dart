@@ -67,6 +67,14 @@ class NearbyService extends ChangeNotifier implements ConsultTransport {
   set onBytes(void Function(String endpointId, Uint8List bytes)? callback) =>
       onBytesReceived = callback;
 
+  /// Transport-loss callback — wired by [ConsultService] so it can tear down
+  /// the crypto session when the radio link drops (issue #17 review).
+  void Function(String endpointId)? onPeerDisconnected;
+
+  @override
+  set onDisconnected(void Function(String endpointId)? callback) =>
+      onPeerDisconnected = callback;
+
   /// Connection-state callback — set by screens
   void Function(String endpointId, String endpointName, bool connected)?
       onConnectionChanged;
@@ -202,12 +210,17 @@ class NearbyService extends ChangeNotifier implements ConsultTransport {
   }
 
   /// Raw frame transport for [ConsultService].
+  ///
+  /// Failures propagate: [ConsultService.sendPayload] has to know a frame
+  /// never left the device, otherwise a patient is told their case was sent
+  /// when it was not (issue #17 review).
   @override
   Future<void> sendBytes(String endpointId, Uint8List bytes) async {
     try {
       await _nearby.sendBytesPayload(endpointId, bytes);
     } catch (e) {
       debugPrint('Send bytes error: $e');
+      rethrow;
     }
   }
 
@@ -216,6 +229,7 @@ class NearbyService extends ChangeNotifier implements ConsultTransport {
     _nearby.disconnectFromEndpoint(endpointId);
     final name = _connectedDevices.remove(endpointId);
     notifyListeners();
+    onPeerDisconnected?.call(endpointId);
     onConnectionChanged?.call(endpointId, name ?? '', false);
   }
 
@@ -223,9 +237,13 @@ class NearbyService extends ChangeNotifier implements ConsultTransport {
     await stopAdvertising();
     await stopDiscovery();
     _nearby.stopAllEndpoints();
+    final dropped = _connectedDevices.keys.toList(growable: false);
     _connectedDevices.clear();
     _discoveredDevices.clear();
     _pendingConnections.clear();
+    for (final id in dropped) {
+      onPeerDisconnected?.call(id);
+    }
     notifyListeners();
   }
 
@@ -268,6 +286,10 @@ class NearbyService extends ChangeNotifier implements ConsultTransport {
   void _onDisconnected(String id) {
     final name = _connectedDevices.remove(id);
     notifyListeners();
+    // Tell the consult layer first: a session whose transport is gone must
+    // not keep reporting itself verified, or the peer can never re-handshake
+    // when it comes back.
+    onPeerDisconnected?.call(id);
     onConnectionChanged?.call(id, name ?? '', false);
   }
 }

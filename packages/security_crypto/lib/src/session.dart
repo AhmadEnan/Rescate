@@ -213,8 +213,12 @@ class ResponderHandshake {
   /// Consumes the patient HELLO, produces the CERT_OFFER to send back.
   Future<Uint8List> onHello(Uint8List helloBytes) async {
     final json = _decodeMessage(helloBytes, 'hello');
-    final patientEphPub =
-        SimplePublicKey(hexToBytes(json['eph'] as String), type: KeyPairType.x25519);
+    // Reject a malformed ephemeral key here rather than letting it fail
+    // during key agreement. The key itself is re-read from the stored HELLO
+    // in [onAccept], which is the copy the transcript is bound to.
+    if (hexToBytes(json['eph'] as String).length != 32) {
+      throw const ConsultProtocolException('bad_ephemeral_key');
+    }
     final challenge = base64Decode(json['challenge'] as String);
     if (challenge.length != 16) {
       throw const ConsultProtocolException('bad_challenge');

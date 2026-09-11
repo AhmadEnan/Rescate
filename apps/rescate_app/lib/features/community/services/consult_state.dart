@@ -10,7 +10,6 @@ import 'dart:io';
 
 import 'package:bluetooth_mesh/bluetooth_mesh.dart';
 import 'package:flutter/foundation.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:security_crypto/security_crypto.dart';
 
 import '../../../core/providers/demo_state.dart';
@@ -23,6 +22,11 @@ class ConsultState extends ChangeNotifier {
   ConsultService? _service;
   ConsultKeyStore? _keyStore;
   bool _initialized = false;
+
+  /// Null on device — the pinned Rescate Medical Authority key is used.
+  List<int>? _authorityPublicKey;
+  List<int> get _authorityKey =>
+      _authorityPublicKey ?? ConsultAuthority.defaultPublicKey().bytes;
 
   static const String _responderNameSuffix = ' •MD';
 
@@ -75,10 +79,25 @@ class ConsultState extends ChangeNotifier {
 
   /// Wires the consult service onto the shared NearbyService. Call once at
   /// app bootstrap; [keyStoreDir] is the app-support directory.
-  Future<void> init({required String keyStoreDir}) async {
+  ///
+  /// [secrets] and [transport] exist so host tests can drive the whole flow
+  /// without platform channels; on device both stay null.
+  /// [authorityPublicKey] overrides the pinned RMA key (tests only) — badge
+  /// restore and badge import both use it, so they can never disagree with
+  /// the key the handshake verifies against.
+  Future<void> init({
+    required String keyStoreDir,
+    SecretStore? secrets,
+    ConsultTransport? transport,
+    List<int>? authorityPublicKey,
+  }) async {
     if (_initialized) return;
-    _keyStore = ConsultKeyStore(keyStoreDir);
-    final service = ConsultService(transport: NearbyService());
+    _keyStore = ConsultKeyStore(keyStoreDir, secrets: secrets);
+    _authorityPublicKey = authorityPublicKey;
+    final service = ConsultService(
+      transport: transport ?? NearbyService(),
+      authorityPublicKey: authorityPublicKey,
+    );
     _service = service;
 
     service.onPeerVerified = (endpointId, credential) {
@@ -112,21 +131,62 @@ class ConsultState extends ChangeNotifier {
       }
       notifyListeners();
     };
-    service.onPeerClosed = (endpointId) => notifyListeners();
+    service.onPeerClosed = (endpointId) {
+      // A dropped session must not keep its retry back-off, or a peer that
+      // reconnects waits out the 20 s handshake window for nothing.
+      _handshakeStartedAt.remove(endpointId);
+      _verifyStartedAt.remove(endpointId);
+      notifyListeners();
+    };
     service.onDataReceived = _onDataReceived;
 
-    // Restore a stored responder badge, if any.
-    try {
-      final keys = await _keyStore!.loadResponderKeys();
-      final badge = await _keyStore!.loadCredential();
-      if (keys != null && badge != null) {
-        await service.enableResponderMode(keys, badge);
-      }
-    } catch (e) {
-      debugPrint('ConsultState badge restore failed: $e');
-    }
+    await _restoreResponderMode(service);
     _initialized = true;
     notifyListeners();
+  }
+
+  /// Reason the stored badge was rejected at startup, or null. Surfaced in
+  /// the responder setup screen — silently staying a patient after a badge
+  /// goes bad is indistinguishable from a broken app.
+  String? _badgeRestoreError;
+  String? get badgeRestoreError => _badgeRestoreError;
+
+  /// Re-verifies the stored badge before trusting it: authority signature,
+  /// both key fingerprints against the keys actually on this device, and
+  /// expiry (all of [ResponderCredential.verify]). A badge that fails any
+  /// check does not enable responder mode — a device advertising itself as a
+  /// responder with an invalid badge is worse than a plain patient device,
+  /// because every patient handshake would die at verification with no
+  /// explanation on either side (issue #17 review).
+  Future<void> _restoreResponderMode(ConsultService service) async {
+    _badgeRestoreError = null;
+    try {
+      final badge = await _keyStore!.loadCredential();
+      // No badge is the normal state: either never set up, or a badge request
+      // is out for signature. Not an error.
+      if (badge == null) return;
+      final keys = await _keyStore!.loadResponderKeys();
+      if (keys == null) {
+        // Badge on disk with no retrievable keys — secure storage was cleared
+        // or is unavailable. Nothing can be signed, so responder mode stays
+        // off.
+        _badgeRestoreError = 'no_local_keys';
+      } else {
+        final reason = await badge.verify(
+          authorityPublicKey: _authorityKey,
+          identityPublicKey: await keys.identityPublicBytes(),
+          keyExchangePublicKey: await keys.keyExchangePublicBytes(),
+        );
+        if (reason == null) {
+          await service.enableResponderMode(keys, badge);
+          return;
+        }
+        _badgeRestoreError = reason;
+      }
+    } catch (e) {
+      _badgeRestoreError = e.toString();
+    }
+    debugPrint('[consult] responder mode NOT restored: $_badgeRestoreError');
   }
 
   // ── Responder mode ─────────────────────────────────────────
@@ -136,6 +196,13 @@ class ConsultState extends ChangeNotifier {
   Future<String> createBadgeRequest({required String displayName}) async {
     final keys = await ResponderKeys.generate();
     await _keyStore!.saveResponderKeys(keys);
+    // These are new keys, so any stored badge was issued against the old ones
+    // and can never verify again. Drop it now: leaving it behind would fail
+    // the startup check on every launch, and previously it re-enabled
+    // responder mode with keys the badge did not match.
+    await _keyStore!.clearCredential();
+    _service?.disableResponderMode();
+    _badgeRestoreError = null;
     final request = BadgeRequest(
       identityPublicKey: await keys.identityPublicBytes(),
       keyExchangePublicKey: await keys.keyExchangePublicBytes(),
@@ -145,6 +212,7 @@ class ConsultState extends ChangeNotifier {
     );
     final path = await _exportableFilePath('rescate_badge_request.json');
     await File(path).writeAsString(request.encode());
+    notifyListeners();
     return path;
   }
 
@@ -160,13 +228,14 @@ class ConsultState extends ChangeNotifier {
         return 'no_local_keys';
       }
       final reason = await badge.verify(
-        authorityPublicKey: ConsultAuthority.defaultPublicKey().bytes,
+        authorityPublicKey: _authorityKey,
         identityPublicKey: await keys.identityPublicBytes(),
         keyExchangePublicKey: await keys.keyExchangePublicBytes(),
       );
       if (reason != null) return reason;
       await _keyStore!.saveCredential(badge);
       await _service?.enableResponderMode(keys, badge);
+      _badgeRestoreError = null;
       NearbyService().setUserName(
         _stripSuffix(NearbyService().userName) + _responderNameSuffix,
       );
@@ -182,6 +251,7 @@ class ConsultState extends ChangeNotifier {
   void disableResponderMode() {
     _service?.disableResponderMode();
     unawaited(_keyStore?.clearResponder());
+    _badgeRestoreError = null;
     NearbyService().setUserName(_stripSuffix(NearbyService().userName));
     notifyListeners();
   }
@@ -438,34 +508,32 @@ class ConsultState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Badge request files go to Downloads when shared storage is actually
-  /// writable, otherwise to the app's own directory (always writable, no
-  /// permission required). Some OEMs/Android versions deny Downloads even
-  /// with MANAGE_EXTERNAL_STORAGE declared — so probe first and never fail.
-  Future<String> _exportableFilePath(String fileName) async {
-    if (!kIsWeb && Platform.isAndroid) {
-      try {
-        if (!await Permission.manageExternalStorage.isGranted) {
-          await Permission.manageExternalStorage.request();
-        }
-      } catch (_) {
-        // Some devices don't expose the permission — the probe below
-        // decides anyway.
-      }
-    }
-    const download = '/storage/emulated/0/Download';
-    try {
-      final probe = File('$download/.rescate_write_test');
-      await probe.writeAsString('ok', flush: true);
-      await probe.delete();
-      return '$download/$fileName';
-    } catch (_) {
-      return '${_keyStore!.basePath}/$fileName';
-    }
-  }
+  /// Badge request files go to the app's own directory — always writable, no
+  /// storage permission, nothing readable by other apps. The file is handed
+  /// to the coordinator through the system share sheet (issue #17 review;
+  /// aligns with issue #24's sandboxed-storage direction).
+  Future<String> _exportableFilePath(String fileName) async =>
+      '${_keyStore!.basePath}${Platform.pathSeparator}$fileName';
 
   static String _stripSuffix(String name) =>
       name.endsWith(_responderNameSuffix)
           ? name.substring(0, name.length - _responderNameSuffix.length)
           : name;
+
+  /// Drops all state so a test can [init] the singleton again.
+  @visibleForTesting
+  void resetForTest() {
+    _service?.disableResponderMode();
+    _service = null;
+    _keyStore = null;
+    _initialized = false;
+    _authorityPublicKey = null;
+    _badgeRestoreError = null;
+    _inbox.clear();
+    _secureHistory.clear();
+    _verifyFailures.clear();
+    _verifyAttempted.clear();
+    _handshakeStartedAt.clear();
+    _verifyStartedAt.clear();
+  }
 }

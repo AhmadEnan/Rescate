@@ -120,3 +120,5 @@ app.*.symbols
 
 # Rescate Medical Authority private signing key (never commit)
 keys/
+rescate_badge_request.json
+.vscode/
