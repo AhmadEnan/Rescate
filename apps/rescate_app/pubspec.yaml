@@ -44,8 +44,11 @@ dependencies:
   file_picker: ^8.0.0
   # Sandboxed model storage (issue #9): app-private models dir + streaming
   # SHA-256 during import.
-  path_provider: ^2.1.0
+  path_provider: ^2.1.4
   crypto: ^3.0.0
+  # Hands the badge request out via the system share sheet (issue #17) so no
+  # broad storage permission is needed — see issue #24's direction.
+  share_plus: ^10.0.0
 
   sensor_availability:
     path: ../../packages/sensor_availability

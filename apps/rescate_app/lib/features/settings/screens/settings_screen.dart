@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../community/models/case_payload.dart' show ConsultRequestStatus;
+import '../../community/screens/responder_setup_screen.dart';
+import '../../community/services/consult_state.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,6 +14,49 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  void _onConsultChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    ConsultState.instance.addListener(_onConsultChanged);
+  }
+
+  @override
+  void dispose() {
+    ConsultState.instance.removeListener(_onConsultChanged);
+    super.dispose();
+  }
+
+
+  Widget _responderSubtitle(bool isArabic) {
+    final consult = ConsultState.instance;
+    final badge = consult.credential;
+    if (badge == null) {
+      return Text(
+        isArabic
+            ? 'تحقق من هويتك لتلقي طلبات الاستشارة'
+            : 'Verify your identity to receive consult requests',
+        style: const TextStyle(fontSize: 12),
+      );
+    }
+    final pending = consult.inbox
+        .where((r) => r.status == ConsultRequestStatus.pending)
+        .length;
+    return Text(
+      pending > 0
+          ? '${badge.name} — $pending pending consult request(s)'
+          : 'Verified — ${badge.name}',
+      style: TextStyle(
+        fontSize: 12,
+        color: pending > 0 ? AppColors.primaryRed : Colors.green.shade700,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+
   void _showLanguageSelector(BuildContext context, AppState appState) {
     showModalBottomSheet(
       context: context,
@@ -79,8 +125,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: (val) {
                   appState.setNotificationsEnabled(val);
                 },
-                activeColor: AppColors.primaryRed,
+                activeThumbColor: AppColors.primaryRed,
               ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: Icon(
+                ConsultState.instance.isResponderMode
+                    ? LucideIcons.shieldCheck
+                    : LucideIcons.stethoscope,
+                color: ConsultState.instance.isResponderMode
+                    ? const Color(0xFF34C759)
+                    : AppColors.primaryRed,
+              ),
+              title: Text(isArabic ? 'مقدم الرعاية الطبية' : 'Medical Responder'),
+              subtitle: _responderSubtitle(isArabic),
+              trailing: const Icon(LucideIcons.chevronRight,
+                  color: AppColors.textDark),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                      builder: (_) => const ResponderSetupScreen()),
+                );
+              },
             ),
             const Divider(),
             ListTile(

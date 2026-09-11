@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:offline_data/offline_data.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sensor_availability/sensor_availability.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite/sqflite.dart';
@@ -16,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/providers/app_state.dart';
 import 'features/ai_chat/state/llm_state.dart';
 import 'features/ai_chat/tools/tool_dispatcher.dart';
+import 'features/community/services/consult_state.dart';
 import 'features/home/screens/main_screen.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
 
@@ -69,6 +71,20 @@ Future<void> main() async {
         soc.contains('mt67');
     final defaultUseGpu = !isBudgetGpu;
     LlmDefaults.useGpu = prefs.getBool('ai_chat.use_gpu') ?? defaultUseGpu;
+
+    // Authenticated consult channel (issue #17): badge-verified sessions.
+    final stepConsult = trace?.begin('bootstrap.consultState');
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      await Profiler.span(
+        'bootstrap.consultState',
+        () => ConsultState.instance.init(keyStoreDir: supportDir.path),
+      );
+      stepConsult?.op(1);
+    } catch (e) {
+      debugPrint('[main] ConsultState.init failed: $e');
+    }
+    stepConsult?.end();
 
     runApp(_BootstrapApp(
       measurementStore: Profiler.span(

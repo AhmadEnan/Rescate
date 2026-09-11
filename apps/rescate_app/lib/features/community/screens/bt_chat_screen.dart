@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:offline_data/offline_data.dart';
+import 'package:security_crypto/security_crypto.dart'
+    show ResponderCredential;
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
 import '../../../core/providers/demo_state.dart';
 import 'package:bluetooth_mesh/bluetooth_mesh.dart';
+import '../models/case_payload.dart';
+import '../services/consult_state.dart';
+import '../widgets/case_payload_sheet.dart';
 
 class BtChatScreen extends StatefulWidget {
   final String endpointId;
@@ -25,16 +30,47 @@ class _BtChatScreenState extends State<BtChatScreen> {
   final TextEditingController _msgController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<BtChatMessage> _messages = [];
+  final List<ConsultChatEntry> _secureMessages = [];
   bool _isConnected = true;
 
   bool get _effectiveConnected =>
       DemoState.instance.isDemoMode || _isConnected;
+
+  bool get _verified =>
+      !DemoState.instance.isDemoMode &&
+      ConsultState.instance.isVerified(widget.endpointId);
+
+  ResponderCredential? get _peerCredential => ConsultState.instance
+      .verifiedPeers[widget.endpointId];
 
   @override
   void initState() {
     super.initState();
     _nearby.onMessageReceived = _handleIncoming;
     _nearby.onConnectionChanged = _handleConnectionChange;
+    ConsultState.instance.addListener(_onConsultChanged);
+
+    // Kick off badge verification for real consultations (issue #17). A
+    // responder device never initiates — its sessions form when a patient
+    // contacts it.
+    if (!DemoState.instance.isDemoMode &&
+        !ConsultState.instance.isResponderMode &&
+        !ConsultState.instance.isVerified(widget.endpointId)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ConsultState.instance.beginHandshake(widget.endpointId);
+      });
+    }
+  }
+
+  void _onConsultChanged() {
+    if (!mounted) return;
+    setState(() {
+      _secureMessages
+        ..clear()
+        ..addAll(ConsultState.instance.historyFor(widget.endpointId));
+    });
+    _scrollToBottom();
   }
 
   void _handleIncoming(String endpointId, String text) {
@@ -54,16 +90,10 @@ class _BtChatScreenState extends State<BtChatScreen> {
     final text = _msgController.text.trim();
     if (text.isEmpty || !_effectiveConnected) return;
 
-    // Send over BT if real connection
-    if (!DemoState.instance.isDemoMode) {
-      _nearby.sendMessage(widget.endpointId, text);
-    }
-    setState(() => _messages.add(BtChatMessage(text: text, isSent: true)));
-    _msgController.clear();
-    _scrollToBottom();
-
-    // In demo mode, simulate a doctor reply after a short delay
     if (DemoState.instance.isDemoMode) {
+      setState(() => _messages.add(BtChatMessage(text: text, isSent: true)));
+      _msgController.clear();
+      _scrollToBottom();
       Future.delayed(const Duration(milliseconds: 1200), () {
         if (!mounted) return;
         final replies = [
@@ -77,6 +107,62 @@ class _BtChatScreenState extends State<BtChatScreen> {
         setState(() => _messages.add(BtChatMessage(text: reply, isSent: false)));
         _scrollToBottom();
       });
+      return;
+    }
+
+    if (_verified) {
+      // Encrypted, authenticated channel.
+      ConsultState.instance.sendSecureText(widget.endpointId, text);
+    } else {
+      // Unverified peer — plain legacy chat, no patient data allowed.
+      _nearby.sendMessage(widget.endpointId, text);
+      setState(() => _messages.add(BtChatMessage(text: text, isSent: true)));
+    }
+    _msgController.clear();
+    _scrollToBottom();
+  }
+
+  Future<void> _sendConsultRequest() async {
+    if (!_verified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+              'This device is not a verified medical responder — patient '
+              'data cannot be shared.'),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+      return;
+    }
+    final store = await MeasurementStore.open();
+    final recent = await store.recentAll(limit: 5);
+    await store.close();
+    final vitals = <String>[
+      for (final m in recent)
+        '${m.displayName}: '
+        '${m.primary?.value.toStringAsFixed(1) ?? '--'} ${m.primary?.unit ?? ''}',
+    ];
+
+    final result = await showCasePayloadSheet(
+      context,
+      responderName: _peerCredential?.name ?? widget.endpointName,
+      availableVitals: vitals,
+    );
+    if (result == null || !mounted) return;
+    final sent =
+        await ConsultState.instance.sendCasePayload(widget.endpointId, result.payload);
+    if (mounted && !sent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not send — session closed.'),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -92,71 +178,12 @@ class _BtChatScreenState extends State<BtChatScreen> {
     });
   }
 
-  Future<void> _shareVitals() async {
-    // Try demo vitals first
-    final demo = DemoState.instance;
-    if (demo.isDemoMode) {
-      if (demo.readings.isEmpty) demo.generateMockReadings();
-      final text = demo.formatReadingsForChat();
-      if (!_effectiveConnected) return;
-      if (!demo.isDemoMode) {
-        _nearby.sendMessage(widget.endpointId, text);
-      }
-      setState(() => _messages.add(BtChatMessage(text: text, isSent: true)));
-      _scrollToBottom();
-      // Simulate doctor acknowledgment
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (!mounted) return;
-        setState(() => _messages.add(BtChatMessage(
-          text: 'Thank you for sharing your vitals. I\'ll review them now. Your readings look within normal range overall.',
-          isSent: false,
-        )));
-        _scrollToBottom();
-      });
-      return;
-    }
-
-    // Real vitals from MeasurementStore
-    try {
-      final store = await MeasurementStore.open();
-      final recent = await store.recentAll(limit: 5);
-      await store.close();
-      if (recent.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('No vitals to share. Run a test first.'),
-              backgroundColor: Colors.orange.shade700,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          );
-        }
-        return;
-      }
-      final buf = StringBuffer('📊 My Recent Vitals:\n');
-      for (final m in recent) {
-        final val = m.primary?.value.toStringAsFixed(1) ?? '--';
-        final unit = m.primary?.unit ?? '';
-        buf.writeln('• ${m.displayName}: $val $unit');
-      }
-      final text = buf.toString().trim();
-      if (!_effectiveConnected) return;
-      _nearby.sendMessage(widget.endpointId, text);
-      setState(() => _messages.add(BtChatMessage(text: text, isSent: true)));
-      _scrollToBottom();
-    } catch (e) {
-      debugPrint('Share vitals failed: $e');
-    }
-  }
-
   @override
   void dispose() {
     _msgController.dispose();
     _scrollController.dispose();
     _nearby.onMessageReceived = null;
+    ConsultState.instance.removeListener(_onConsultChanged);
     super.dispose();
   }
 
@@ -254,6 +281,8 @@ class _BtChatScreenState extends State<BtChatScreen> {
         ),
         body: Column(
           children: [
+            // ── Trust banner (issue #17) ─────────────────────────
+            if (!DemoState.instance.isDemoMode) _buildTrustBanner(isArabic),
             // Disconnected banner
             if (!_isConnected)
               Container(
@@ -279,7 +308,7 @@ class _BtChatScreenState extends State<BtChatScreen> {
                 ),
               ),
             Expanded(
-              child: _messages.isEmpty
+              child: (_messages.isEmpty && _secureMessages.isEmpty)
                   ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -310,13 +339,99 @@ class _BtChatScreenState extends State<BtChatScreen> {
                   : ListView.builder(
                       controller: _scrollController,
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      itemCount: _messages.length,
-                      itemBuilder: (_, i) => _buildBubble(_messages[i]),
+                      itemCount: _messages.length + _secureMessages.length,
+                      itemBuilder: (_, i) {
+                        if (i < _messages.length) {
+                          return _buildBubble(_messages[i]);
+                        }
+                        return _buildConsultEntry(
+                            _secureMessages[i - _messages.length]);
+                      },
                     ),
             ),
             _buildInputBar(isArabic),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTrustBanner(bool isArabic) {
+    final credential = _peerCredential;
+    if (_verified && credential != null) {
+      // Patient side: talking to a badge-verified responder.
+      return Container(
+        color: const Color(0xFF34C759).withValues(alpha: 0.12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.shieldCheck,
+                color: Color(0xFF34C759), size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Verified ${credential.role.title}: ${credential.name} — end-to-end encrypted',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF248A3D),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_verified) {
+      // Responder side: session is encrypted; the patient has no badge by
+      // design (trust flows one way — responder → patient).
+      return Container(
+        color: const Color(0xFF34C759).withValues(alpha: 0.12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.lock,
+                color: Color(0xFF34C759), size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Encrypted session — patient identity not claimed',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF248A3D),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final verifying = _isConnected && !ConsultState.instance.isResponderMode;
+    return Container(
+      color: Colors.orange.withValues(alpha: 0.12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            verifying ? LucideIcons.loader : LucideIcons.shieldAlert,
+            color: Colors.orange.shade800,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              verifying
+                  ? 'Verifying medical responder…'
+                  : 'Unverified device — patient data sharing disabled.',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.orange.shade900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -380,6 +495,38 @@ class _BtChatScreenState extends State<BtChatScreen> {
     );
   }
 
+  Widget _buildConsultEntry(ConsultChatEntry entry) {
+    if (entry.isSystem) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Align(
+          alignment: Alignment.center,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              entry.text,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.35,
+                color: AppColors.textDark.withValues(alpha: 0.75),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return _buildBubble(BtChatMessage(
+      text: entry.text,
+      isSent: entry.isSent,
+      timestamp: entry.timestamp,
+    ));
+  }
+
   Widget _buildInputBar(bool isArabic) {
     return SafeArea(
       child: Container(
@@ -415,21 +562,21 @@ class _BtChatScreenState extends State<BtChatScreen> {
               ),
             ),
             const SizedBox(width: 6),
-            // Share vitals button
+            // Consult request (case payload) — verified peers only
             GestureDetector(
-              onTap: _isConnected ? _shareVitals : null,
+              onTap: _isConnected ? _sendConsultRequest : null,
               child: Container(
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: _isConnected
-                      ? AppColors.primaryRed.withOpacity(0.1)
-                      : AppColors.cardBackgroundLight.withOpacity(0.5),
+                  color: _verified
+                      ? AppColors.primaryRed.withValues(alpha: 0.1)
+                      : AppColors.cardBackgroundLight.withValues(alpha: 0.5),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  LucideIcons.heartPulse,
-                  color: _isConnected
+                  _verified ? LucideIcons.heartPulse : LucideIcons.lock,
+                  color: _verified
                       ? AppColors.primaryRed
                       : AppColors.cardBackgroundLight,
                   size: 18,

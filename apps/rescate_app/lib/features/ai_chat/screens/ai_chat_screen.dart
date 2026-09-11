@@ -278,7 +278,7 @@ class _AiChatScreenState extends State<AiChatScreen>
               child: Row(
                 children: [
                   const SizedBox(width: 12),
-                  SizedBox(
+                  const SizedBox(
                     width: 14,
                     height: 14,
                     child: CircularProgressIndicator(
@@ -291,7 +291,7 @@ class _AiChatScreenState extends State<AiChatScreen>
                     isArabic ? 'الذكاء الاصطناعي يفكر...' : 'AI is thinking…',
                     style: GoogleFonts.inter(
                       fontSize: 12,
-                      color: AppColors.textDark.withOpacity(0.6),
+                      color: AppColors.textDark.withValues(alpha: 0.6),
                     ),
                   ),
                 ],
@@ -304,13 +304,13 @@ class _AiChatScreenState extends State<AiChatScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryRed.withOpacity(0.08),
+                  color: AppColors.primaryRed.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.primaryRed.withOpacity(0.2)),
+                  border: Border.all(color: AppColors.primaryRed.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   children: [
-                    Icon(LucideIcons.mic, size: 14, color: AppColors.primaryRed)
+                    const Icon(LucideIcons.mic, size: 14, color: AppColors.primaryRed)
                         .animate(onPlay: (c) => c.repeat(reverse: true))
                         .fadeIn(duration: 600.ms)
                         .then()
@@ -323,7 +323,7 @@ class _AiChatScreenState extends State<AiChatScreen>
                             : (isArabic ? 'جاري الاستماع…' : 'Listening…'),
                         style: GoogleFonts.inter(
                           fontSize: 13,
-                          color: AppColors.textDark.withOpacity(0.7),
+                          color: AppColors.textDark.withValues(alpha: 0.7),
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -391,14 +391,14 @@ class _AiChatScreenState extends State<AiChatScreen>
                   decoration: BoxDecoration(
                     color: _stt.isListening
                         ? AppColors.primaryRed
-                        : AppColors.aiAccentPink.withOpacity(0.3),
+                        : AppColors.aiAccentPink.withValues(alpha: 0.3),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     _stt.isListening ? LucideIcons.micOff : LucideIcons.mic,
                     color: _stt.isListening
                         ? Colors.white
-                        : (canSend ? AppColors.primaryRed : AppColors.textDark.withOpacity(0.3)),
+                        : (canSend ? AppColors.primaryRed : AppColors.textDark.withValues(alpha: 0.3)),
                     size: 18,
                   ),
                 ),
@@ -409,7 +409,7 @@ class _AiChatScreenState extends State<AiChatScreen>
                 child: Container(
                   height: 50,
                   decoration: BoxDecoration(
-                    color: AppColors.aiAccentPink.withOpacity(0.15),
+                    color: AppColors.aiAccentPink.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(30),
                     border: Border.all(
                       color: _stt.isListening
@@ -453,15 +453,15 @@ class _AiChatScreenState extends State<AiChatScreen>
                   height: 42,
                   decoration: BoxDecoration(
                     color: canSend
-                        ? AppColors.primaryRed.withOpacity(0.1)
-                        : AppColors.cardBackground.withOpacity(0.5),
+                        ? AppColors.primaryRed.withValues(alpha: 0.1)
+                        : AppColors.cardBackground.withValues(alpha: 0.5),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     LucideIcons.heartPulse,
                     color: canSend
                         ? AppColors.primaryRed
-                        : AppColors.textDark.withOpacity(0.3),
+                        : AppColors.textDark.withValues(alpha: 0.3),
                     size: 18,
                   ),
                 ),
@@ -485,7 +485,7 @@ class _AiChatScreenState extends State<AiChatScreen>
                         : LucideIcons.send,
                     color: canSend
                         ? Colors.white
-                        : AppColors.textDark.withOpacity(0.3),
+                        : AppColors.textDark.withValues(alpha: 0.3),
                     size: 20,
                   ),
                 ),
@@ -531,7 +531,7 @@ class _ChatToolbar extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -543,7 +543,7 @@ class _ChatToolbar extends StatelessWidget {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: AppColors.primaryRed.withOpacity(0.6),
+              color: AppColors.primaryRed.withValues(alpha: 0.6),
               shape: BoxShape.circle,
             ),
           ),
@@ -572,8 +572,8 @@ class _ChatToolbar extends StatelessWidget {
                 height: 34,
                 decoration: BoxDecoration(
                   color: ttsEnabled
-                      ? AppColors.primaryRed.withOpacity(0.15)
-                      : AppColors.primaryRed.withOpacity(0.08),
+                      ? AppColors.primaryRed.withValues(alpha: 0.15)
+                      : AppColors.primaryRed.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -583,7 +583,7 @@ class _ChatToolbar extends StatelessWidget {
                           ? LucideIcons.volume2
                           : LucideIcons.volumeX,
                   size: 16,
-                  color: ttsEnabled ? AppColors.primaryRed : AppColors.primaryRed.withOpacity(0.4),
+                  color: ttsEnabled ? AppColors.primaryRed : AppColors.primaryRed.withValues(alpha: 0.4),
                 ),
               ),
             ),
@@ -609,7 +609,7 @@ class _ChatToolbar extends StatelessWidget {
           width: 34,
           height: 34,
           decoration: BoxDecoration(
-            color: AppColors.primaryRed.withOpacity(0.08),
+            color: AppColors.primaryRed.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, size: 16, color: AppColors.primaryRed),
@@ -656,7 +656,7 @@ class _ModelStatusBanner extends StatelessWidget {
                     : 'Model ready',
                 style: GoogleFonts.inter(
                   fontSize: 11,
-                  color: AppColors.textDark.withOpacity(0.5),
+                  color: AppColors.textDark.withValues(alpha: 0.5),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -696,7 +696,7 @@ class _ModelStatusBanner extends StatelessWidget {
               'Loading model…',
               style: GoogleFonts.inter(
                 fontSize: 12,
-                color: AppColors.textDark.withOpacity(0.6),
+                color: AppColors.textDark.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -751,7 +751,7 @@ class _ModelStatusBanner extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.aiAccentPink.withOpacity(0.25),
+          color: AppColors.aiAccentPink.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.aiAccentPink, width: 1),
         ),
@@ -764,7 +764,7 @@ class _ModelStatusBanner extends StatelessWidget {
                 'Tap to load your GGUF model and start chatting offline.',
                 style: GoogleFonts.inter(
                   fontSize: 13,
-                  color: AppColors.textDark.withOpacity(0.7),
+                  color: AppColors.textDark.withValues(alpha: 0.7),
                 ),
               ),
             ),
@@ -826,7 +826,7 @@ class _EmptyState extends StatelessWidget {
                   width: 120,
                   height: 120,
                   decoration: BoxDecoration(
-                    color: AppColors.primaryRed.withOpacity(0.05),
+                    color: AppColors.primaryRed.withValues(alpha: 0.05),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -834,7 +834,7 @@ class _EmptyState extends StatelessWidget {
                   width: 88,
                   height: 88,
                   decoration: BoxDecoration(
-                    color: AppColors.primaryRed.withOpacity(0.1),
+                    color: AppColors.primaryRed.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -845,7 +845,7 @@ class _EmptyState extends StatelessWidget {
                     gradient: LinearGradient(
                       colors: [
                         AppColors.primaryRed,
-                        AppColors.primaryRed.withOpacity(0.8),
+                        AppColors.primaryRed.withValues(alpha: 0.8),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -853,7 +853,7 @@ class _EmptyState extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.3),
+                        color: AppColors.primaryRed.withValues(alpha: 0.3),
                         blurRadius: 20,
                         offset: const Offset(0, 6),
                       ),
@@ -887,7 +887,7 @@ class _EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 14,
-                color: AppColors.textDark.withOpacity(0.5),
+                color: AppColors.textDark.withValues(alpha: 0.5),
                 height: 1.5,
               ),
             ).animate().fadeIn(delay: 200.ms),
@@ -898,7 +898,7 @@ class _EmptyState extends StatelessWidget {
               style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textDark.withOpacity(0.35),
+                color: AppColors.textDark.withValues(alpha: 0.35),
               ),
             ).animate().fadeIn(delay: 300.ms),
             const SizedBox(height: 10),
@@ -916,11 +916,11 @@ class _EmptyState extends StatelessWidget {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: AppColors.primaryRed.withOpacity(0.12),
+                        color: AppColors.primaryRed.withValues(alpha: 0.12),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.02),
+                          color: Colors.black.withValues(alpha: 0.02),
                           blurRadius: 6,
                           offset: const Offset(0, 2),
                         ),
@@ -930,7 +930,7 @@ class _EmptyState extends StatelessWidget {
                       e.value,
                       style: GoogleFonts.inter(
                         fontSize: 12,
-                        color: AppColors.textDark.withOpacity(0.65),
+                        color: AppColors.textDark.withValues(alpha: 0.65),
                       ),
                     ),
                   ),
@@ -1092,7 +1092,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
               width: 26,
               height: 26,
               decoration: BoxDecoration(
-                color: AppColors.primaryRed.withOpacity(0.1),
+                color: AppColors.primaryRed.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(LucideIcons.bot,
@@ -1113,8 +1113,8 @@ class _ChatBubbleState extends State<_ChatBubble> {
             boxShadow: [
               BoxShadow(
                 color: isUser
-                    ? AppColors.primaryRed.withOpacity(0.25)
-                    : Colors.black.withOpacity(0.04),
+                    ? AppColors.primaryRed.withValues(alpha: 0.25)
+                    : Colors.black.withValues(alpha: 0.04),
                 blurRadius: isUser ? 16 : 8,
                 offset: const Offset(0, 4),
               ),
@@ -1305,7 +1305,7 @@ class _TypingIndicator extends StatelessWidget {
           height: 5,
           margin: const EdgeInsets.only(right: 3),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.6),
+            color: color.withValues(alpha: 0.6),
             shape: BoxShape.circle,
           ),
         )
@@ -1352,7 +1352,7 @@ class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.textDark.withOpacity(0.15),
+              color: AppColors.textDark.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -1385,7 +1385,7 @@ class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 13,
-                  color: AppColors.textDark.withOpacity(0.45),
+                  color: AppColors.textDark.withValues(alpha: 0.45),
                 ),
               ),
             )
@@ -1409,12 +1409,12 @@ class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
                           horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
                         color: isChosen
-                            ? AppColors.primaryRed.withOpacity(0.08)
+                            ? AppColors.primaryRed.withValues(alpha: 0.08)
                             : Colors.white,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: isChosen
-                              ? AppColors.primaryRed.withOpacity(0.4)
+                              ? AppColors.primaryRed.withValues(alpha: 0.4)
                               : Colors.transparent,
                           width: 1.5,
                         ),
@@ -1451,7 +1451,7 @@ class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
                                     style: GoogleFonts.inter(
                                       fontSize: 11,
                                       color:
-                                          AppColors.textDark.withOpacity(0.4),
+                                          AppColors.textDark.withValues(alpha: 0.4),
                                     )),
                               ],
                             ),
@@ -1491,7 +1491,7 @@ class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primaryRed.withOpacity(0.3),
+                        color: AppColors.primaryRed.withValues(alpha: 0.3),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),

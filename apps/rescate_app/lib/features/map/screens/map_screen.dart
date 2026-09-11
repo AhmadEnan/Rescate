@@ -438,7 +438,7 @@ class _MapScreenState extends State<MapScreen> {
     final options = <_DownloadOptionData>[];
     for (final radiusKm in const [1.0, 3.0, 5.0]) {
       final region = _downloadRegionFor(radiusKm);
-      final tileCount = await FMTCStore(_mapStoreName).download.check(region);
+      final tileCount = await const FMTCStore(_mapStoreName).download.check(region);
       options.add(
         _DownloadOptionData(radiusKm: radiusKm, tileCount: tileCount),
       );
@@ -607,7 +607,7 @@ class _MapScreenState extends State<MapScreen> {
                           : 'Downloads this area around your current location and uses it automatically when you pick a destination.',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
-                        color: AppColors.textDark.withOpacity(0.7),
+                        color: AppColors.textDark.withValues(alpha: 0.7),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -659,7 +659,7 @@ class _MapScreenState extends State<MapScreen> {
       final downloadCenter = _myLocation;
       final region = _downloadRegionFor(radiusKm);
 
-      final progressStream = FMTCStore(_mapStoreName).download.startForeground(
+      final progressStream = const FMTCStore(_mapStoreName).download.startForeground(
         region: region,
         parallelThreads: 2,
         skipExistingTiles: true,
@@ -910,7 +910,7 @@ class _MapScreenState extends State<MapScreen> {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
+                    color: Colors.black.withValues(alpha: 0.18),
                     blurRadius: 8,
                     offset: const Offset(0, 3),
                   ),
@@ -922,7 +922,7 @@ class _MapScreenState extends State<MapScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.92),
+                color: Colors.white.withValues(alpha: 0.92),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -1065,7 +1065,7 @@ class _MapScreenState extends State<MapScreen> {
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.rescate_app',
-                tileProvider: FMTCStore(_mapStoreName).getTileProvider(),
+                tileProvider: const FMTCStore(_mapStoreName).getTileProvider(),
               ),
               // Danger zone areas are real geographic polygons, not pixel circles.
               PolygonLayer(
@@ -1073,8 +1073,8 @@ class _MapScreenState extends State<MapScreen> {
                     .map(
                       (zone) => Polygon(
                         points: _dangerZonePolygon(zone),
-                        color: Colors.red.withOpacity(0.22),
-                        borderColor: Colors.red.withOpacity(0.7),
+                        color: Colors.red.withValues(alpha: 0.22),
+                        borderColor: Colors.red.withValues(alpha: 0.7),
                         borderStrokeWidth: 2,
                       ),
                     )
@@ -1090,7 +1090,7 @@ class _MapScreenState extends State<MapScreen> {
                     height: 70,
                     child: Column(
                       children: [
-                        Icon(
+                        const Icon(
                           LucideIcons.mapPin,
                           color: AppColors.primaryRed,
                           size: 28,
@@ -1128,7 +1128,7 @@ class _MapScreenState extends State<MapScreen> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
+                              color: Colors.black.withValues(alpha: 0.18),
                               blurRadius: 8,
                               offset: const Offset(0, 3),
                             ),
@@ -1176,7 +1176,7 @@ class _MapScreenState extends State<MapScreen> {
                       children: [
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.3),
+                            color: Colors.blue.withValues(alpha: 0.3),
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -1229,11 +1229,11 @@ class _MapScreenState extends State<MapScreen> {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.94),
+                  color: Colors.white.withValues(alpha: 0.94),
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
+                      color: Colors.black.withValues(alpha: 0.12),
                       blurRadius: 10,
                       offset: const Offset(0, 3),
                     ),
@@ -1297,21 +1297,21 @@ class _MapScreenState extends State<MapScreen> {
             child: Column(
               children: [
                 _MapButton(
+                  onTap: _zoomIn,
                   child: const Icon(
                     LucideIcons.plus,
                     color: AppColors.textDark,
                     size: 18,
                   ),
-                  onTap: _zoomIn,
                 ),
                 const SizedBox(height: 8),
                 _MapButton(
+                  onTap: _zoomOut,
                   child: const Icon(
                     LucideIcons.minus,
                     color: AppColors.textDark,
                     size: 18,
                   ),
-                  onTap: _zoomOut,
                 ),
               ],
             ),
@@ -1324,6 +1324,7 @@ class _MapScreenState extends State<MapScreen> {
             child: Column(
               children: [
                 _MapButton(
+                  onTap: _toggleHeadingFollow,
                   child: Icon(
                     Icons.arrow_upward_rounded,
                     color: _followHeading
@@ -1331,7 +1332,6 @@ class _MapScreenState extends State<MapScreen> {
                         : AppColors.textDark,
                     size: 20,
                   ),
-                  onTap: _toggleHeadingFollow,
                 ),
                 const SizedBox(height: 8),
                 _MapButton(
@@ -1357,15 +1357,16 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 const SizedBox(height: 8),
                 _MapButton(
+                  onTap: _centerMap,
                   child: const Icon(
                     LucideIcons.crosshair,
                     color: AppColors.textDark,
                     size: 18,
                   ),
-                  onTap: _centerMap,
                 ),
                 const SizedBox(height: 8),
                 _MapButton(
+                  onTap: _toggleRoute,
                   child: Icon(
                     LucideIcons.navigation,
                     color: _showRoute
@@ -1373,7 +1374,6 @@ class _MapScreenState extends State<MapScreen> {
                         : AppColors.textDark,
                     size: 18,
                   ),
-                  onTap: _toggleRoute,
                 ),
               ],
             ),
@@ -1398,11 +1398,11 @@ class _MapButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
+          color: Colors.white.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(10),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -1441,11 +1441,11 @@ class _LocationInfoPanel extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 230),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.92),
+          color: Colors.white.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -1480,7 +1480,7 @@ class _LocationInfoPanel extends StatelessWidget {
                   showCoordinates
                       ? Icons.expand_more_rounded
                       : Icons.chevron_right_rounded,
-                  color: AppColors.textDark.withOpacity(0.65),
+                  color: AppColors.textDark.withValues(alpha: 0.65),
                   size: 16,
                 ),
               ],
@@ -1490,7 +1490,7 @@ class _LocationInfoPanel extends StatelessWidget {
               'Orientation $heading${isFollowingHeading ? ' • map up' : ''}',
               style: GoogleFonts.poppins(
                 fontSize: 10.5,
-                color: AppColors.textDark.withOpacity(0.75),
+                color: AppColors.textDark.withValues(alpha: 0.75),
               ),
             ),
             if (showCoordinates) ...[
@@ -1499,7 +1499,7 @@ class _LocationInfoPanel extends StatelessWidget {
                 '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}',
                 style: GoogleFonts.poppins(
                   fontSize: 9,
-                  color: AppColors.textDark.withOpacity(0.62),
+                  color: AppColors.textDark.withValues(alpha: 0.62),
                 ),
               ),
             ],
@@ -1521,11 +1521,11 @@ class _DownloadProgressPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.94),
+        color: Colors.white.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1549,7 +1549,7 @@ class _DownloadProgressPanel extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress <= 0 ? null : progress,
               minHeight: 8,
-              backgroundColor: AppColors.textDark.withOpacity(0.12),
+              backgroundColor: AppColors.textDark.withValues(alpha: 0.12),
               valueColor: const AlwaysStoppedAnimation<Color>(
                 AppColors.primaryRed,
               ),
@@ -1560,7 +1560,7 @@ class _DownloadProgressPanel extends StatelessWidget {
             status,
             style: GoogleFonts.poppins(
               fontSize: 11,
-              color: AppColors.textDark.withOpacity(0.72),
+              color: AppColors.textDark.withValues(alpha: 0.72),
             ),
           ),
         ],
@@ -1590,7 +1590,7 @@ class _ReportOption extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: color, size: 22),

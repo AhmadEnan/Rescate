@@ -22,58 +22,58 @@ class _EducationalScreenState extends State<EducationalScreen> {
 
   // Each lesson now has an icon + gradient for consistent thumbnails
   final List<_LessonData> _allLessons = [
-    _LessonData(
+    const _LessonData(
       titleAr: 'أساسيات الإنعاش',
       titleEn: 'CPR Basics',
       subAr: 'الإسعافات الأولية',
       subEn: 'First Aid',
       icon: LucideIcons.heartPulse,
-      gradientColors: [const Color(0xFFCFC3B0), const Color(0xFFD5CBBD)],
+      gradientColors: [Color(0xFFCFC3B0), Color(0xFFD5CBBD)],
       durationMin: 12,
     ),
-    _LessonData(
+    const _LessonData(
       titleAr: 'العناية بالجروح',
       titleEn: 'Wound Care',
       subAr: 'الإسعافات الأولية',
       subEn: 'First Aid',
       icon: LucideIcons.scissors,
-      gradientColors: [const Color(0xFFCFC3B0), const Color(0xFFD5CBBD)],
+      gradientColors: [Color(0xFFCFC3B0), Color(0xFFD5CBBD)],
       durationMin: 8,
     ),
-    _LessonData(
+    const _LessonData(
       titleAr: 'الكسور والجبائر',
       titleEn: 'Fractures & Splints',
       subAr: 'الإسعافات الأولية',
       subEn: 'First Aid',
       icon: LucideIcons.shield,
-      gradientColors: [const Color(0xFFCFC3B0), const Color(0xFFD5CBBD)],
+      gradientColors: [Color(0xFFCFC3B0), Color(0xFFD5CBBD)],
       durationMin: 15,
     ),
-    _LessonData(
+    const _LessonData(
       titleAr: 'إسعاف الحروق',
       titleEn: 'Burn Treatment',
       subAr: 'الإسعافات الأولية',
       subEn: 'First Aid',
       icon: LucideIcons.flame,
-      gradientColors: [const Color(0xFFCFC3B0), const Color(0xFFD5CBBD)],
+      gradientColors: [Color(0xFFCFC3B0), Color(0xFFD5CBBD)],
       durationMin: 10,
     ),
-    _LessonData(
+    const _LessonData(
       titleAr: 'التسمم الغذائي',
       titleEn: 'Food Poisoning',
       subAr: 'حالات الطوارئ',
       subEn: 'Emergencies',
       icon: LucideIcons.alertTriangle,
-      gradientColors: [const Color(0xFFCFC3B0), const Color(0xFFD5CBBD)],
+      gradientColors: [Color(0xFFCFC3B0), Color(0xFFD5CBBD)],
       durationMin: 7,
     ),
-    _LessonData(
+    const _LessonData(
       titleAr: 'الإختناق',
       titleEn: 'Choking Response',
       subAr: 'حالات الطوارئ',
       subEn: 'Emergencies',
       icon: LucideIcons.wind,
-      gradientColors: [const Color(0xFFCFC3B0), const Color(0xFFD5CBBD)],
+      gradientColors: [Color(0xFFCFC3B0), Color(0xFFD5CBBD)],
       durationMin: 6,
     ),
   ];
@@ -122,7 +122,7 @@ class _EducationalScreenState extends State<EducationalScreen> {
                                   : 'Medical guides & first aid training',
                               style: GoogleFonts.inter(
                                 fontSize: 13,
-                                color: AppColors.textDark.withOpacity(0.5),
+                                color: AppColors.textDark.withValues(alpha: 0.5),
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -135,7 +135,7 @@ class _EducationalScreenState extends State<EducationalScreen> {
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.04),
+                                    color: Colors.black.withValues(alpha: 0.04),
                                     blurRadius: 10,
                                     offset: const Offset(0, 3),
                                   ),
@@ -151,13 +151,13 @@ class _EducationalScreenState extends State<EducationalScreen> {
                                       ? 'البحث عن الدروس...'
                                       : 'Search lessons...',
                                   hintStyle: GoogleFonts.inter(
-                                    color: AppColors.textDark.withOpacity(0.35),
+                                    color: AppColors.textDark.withValues(alpha: 0.35),
                                     fontSize: 14,
                                   ),
                                   prefixIcon: Icon(
                                     LucideIcons.search,
                                     size: 18,
-                                    color: AppColors.textDark.withOpacity(0.4),
+                                    color: AppColors.textDark.withValues(alpha: 0.4),
                                   ),
                                   border: InputBorder.none,
                                   contentPadding: const EdgeInsets.symmetric(
@@ -176,7 +176,7 @@ class _EducationalScreenState extends State<EducationalScreen> {
                                 borderRadius: BorderRadius.circular(22),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.primaryRed.withOpacity(0.25),
+                                    color: AppColors.primaryRed.withValues(alpha: 0.25),
                                     blurRadius: 16,
                                     offset: const Offset(0, 6),
                                   ),
@@ -205,7 +205,7 @@ class _EducationalScreenState extends State<EducationalScreen> {
                                               : 'Ask our Medical AI for\ninstant answers',
                                           style: GoogleFonts.inter(
                                             fontSize: 13,
-                                            color: Colors.white.withOpacity(0.85),
+                                            color: Colors.white.withValues(alpha: 0.85),
                                             height: 1.4,
                                           ),
                                         ),
@@ -252,7 +252,7 @@ class _EducationalScreenState extends State<EducationalScreen> {
                                     width: 60,
                                     height: 60,
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.15),
+                                      color: Colors.white.withValues(alpha: 0.15),
                                       shape: BoxShape.circle,
                                     ),
                                     child: const Icon(
@@ -345,12 +345,12 @@ class _EducationalScreenState extends State<EducationalScreen> {
               children: [
                 Icon(LucideIcons.searchX,
                     size: 40,
-                    color: AppColors.textDark.withOpacity(0.2)),
+                    color: AppColors.textDark.withValues(alpha: 0.2)),
                 const SizedBox(height: 12),
                 Text(
                   isArabic ? 'لم يتم العثور على نتائج' : 'No results found',
                   style: GoogleFonts.inter(
-                    color: AppColors.textDark.withOpacity(0.4),
+                    color: AppColors.textDark.withValues(alpha: 0.4),
                   ),
                 ),
               ],
@@ -450,7 +450,7 @@ class _LessonCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -484,7 +484,7 @@ class _LessonCard extends StatelessWidget {
                         width: 80,
                         height: 80,
                         decoration: BoxDecoration(
-                          color: AppColors.primaryRed.withOpacity(0.08),
+                          color: AppColors.primaryRed.withValues(alpha: 0.08),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -496,7 +496,7 @@ class _LessonCard extends StatelessWidget {
                         width: 50,
                         height: 50,
                         decoration: BoxDecoration(
-                          color: AppColors.primaryRed.withOpacity(0.06),
+                          color: AppColors.primaryRed.withValues(alpha: 0.06),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -506,7 +506,7 @@ class _LessonCard extends StatelessWidget {
                       child: Icon(
                         icon,
                         size: 40,
-                        color: AppColors.primaryRed.withOpacity(0.6),
+                        color: AppColors.primaryRed.withValues(alpha: 0.6),
                       ),
                     ),
                     // Duration badge
@@ -517,7 +517,7 @@ class _LessonCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryRed.withOpacity(0.1),
+                          color: AppColors.primaryRed.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
@@ -566,7 +566,7 @@ class _LessonCard extends StatelessWidget {
                         width: 6,
                         height: 6,
                         decoration: BoxDecoration(
-                          color: gradientColors.first.withOpacity(0.6),
+                          color: gradientColors.first.withValues(alpha: 0.6),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -578,7 +578,7 @@ class _LessonCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
                             fontSize: 11,
-                            color: AppColors.textDark.withOpacity(0.5),
+                            color: AppColors.textDark.withValues(alpha: 0.5),
                           ),
                         ),
                       ),
@@ -789,7 +789,7 @@ class _LessonDetailScreenState extends State<_LessonDetailScreen> {
                 child: Center(
                   child: Text(
                     isArabic ? 'محتوى الدرس قيد التطوير' : 'Lesson content in development',
-                    style: GoogleFonts.inter(fontSize: 16, color: AppColors.textDark.withOpacity(0.5)),
+                    style: GoogleFonts.inter(fontSize: 16, color: AppColors.textDark.withValues(alpha: 0.5)),
                   ),
                 ),
               )
@@ -845,7 +845,7 @@ class _LessonDetailScreenState extends State<_LessonDetailScreen> {
                           decoration: BoxDecoration(
                             color: _currentIndex == index
                                 ? AppColors.primaryRed
-                                : AppColors.primaryRed.withOpacity(0.2),
+                                : AppColors.primaryRed.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(4),
                           ),
                         );
@@ -886,7 +886,7 @@ class _LessonDetailScreenState extends State<_LessonDetailScreen> {
                                   textAlign: TextAlign.center,
                                   style: GoogleFonts.inter(
                                     fontSize: 16,
-                                    color: AppColors.textDark.withOpacity(0.7),
+                                    color: AppColors.textDark.withValues(alpha: 0.7),
                                     height: 1.6,
                                   ),
                                 ),
@@ -941,7 +941,7 @@ class _LessonDetailScreenState extends State<_LessonDetailScreen> {
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.primaryRed.withOpacity(0.3),
+                                    color: AppColors.primaryRed.withValues(alpha: 0.3),
                                     blurRadius: 12,
                                     offset: const Offset(0, 4),
                                   ),
@@ -1022,7 +1022,7 @@ class _AnimatedHumanGraphic extends StatelessWidget {
                 width: 140,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.4),
+                  color: Colors.white.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(15),
                 ),
               ),
@@ -1055,7 +1055,7 @@ class _AnimatedHumanGraphic extends StatelessWidget {
                     width: 10,
                     height: 30,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       borderRadius: BorderRadius.circular(5),
                     ),
                   ),
@@ -1080,7 +1080,7 @@ class _AnimatedHumanGraphic extends StatelessWidget {
                 width: 120,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(15),
                 ),
               ),
@@ -1092,7 +1092,7 @@ class _AnimatedHumanGraphic extends StatelessWidget {
                 width: 30,
                 height: 20,
                 decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.8),
+                  color: Colors.redAccent.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(10),
                 ),
               ).animate(onPlay: (c) => c.repeat(reverse: true)).fadeOut(duration: 1.seconds),
@@ -1129,7 +1129,7 @@ class _AnimatedHumanGraphic extends StatelessWidget {
                     width: 35,
                     height: 35,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -1138,7 +1138,7 @@ class _AnimatedHumanGraphic extends StatelessWidget {
                     width: 45,
                     height: 70,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
@@ -1185,7 +1185,7 @@ class _AnimatedHumanGraphic extends StatelessWidget {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
             child: const Icon(LucideIcons.activity, color: Colors.white, size: 40),

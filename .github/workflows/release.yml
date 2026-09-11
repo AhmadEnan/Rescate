@@ -59,7 +59,7 @@ jobs:
           echo "::group::Workspace smoke test"
           flutter test
           echo "::endgroup::"
-          for pkg in ai_inference biometric_estimators dev_profiler offline_data sensor_availability; do
+          for pkg in ai_inference biometric_estimators bluetooth_mesh dev_profiler offline_data security_crypto sensor_availability; do
             echo "::group::Package tests: $pkg"
             (cd "packages/$pkg" && flutter test)
             echo "::endgroup::"

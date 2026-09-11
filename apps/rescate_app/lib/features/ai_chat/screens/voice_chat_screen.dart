@@ -89,7 +89,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.white.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(LucideIcons.x, color: Colors.white70, size: 20),
@@ -144,7 +144,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: AppColors.primaryRed.withOpacity(0.15),
+                        color: AppColors.primaryRed.withValues(alpha: 0.15),
                         width: 1.5,
                       ),
                     ),
@@ -159,9 +159,9 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                   height: 150,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppColors.primaryRed.withOpacity(0.08),
+                    color: AppColors.primaryRed.withValues(alpha: 0.08),
                     border: Border.all(
-                      color: AppColors.primaryRed.withOpacity(0.2),
+                      color: AppColors.primaryRed.withValues(alpha: 0.2),
                       width: 1,
                     ),
                   ),
@@ -175,8 +175,8 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      AppColors.primaryRed.withOpacity(innerGlow),
-                      AppColors.primaryRed.withOpacity(innerGlow * 0.4),
+                      AppColors.primaryRed.withValues(alpha: innerGlow),
+                      AppColors.primaryRed.withValues(alpha: innerGlow * 0.4),
                       Colors.transparent,
                     ],
                     stops: const [0.0, 0.6, 1.0],
@@ -192,20 +192,20 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                   gradient: LinearGradient(
                     colors: [
                       AppColors.primaryRed,
-                      AppColors.primaryRed.withOpacity(0.7),
+                      AppColors.primaryRed.withValues(alpha: 0.7),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primaryRed.withOpacity(innerGlow * 0.6),
+                      color: AppColors.primaryRed.withValues(alpha: innerGlow * 0.6),
                       blurRadius: 30,
                       spreadRadius: 4,
                     ),
                   ],
                 ),
-                child: Icon(LucideIcons.micOff, color: Colors.white, size: 22),
+                child: const Icon(LucideIcons.micOff, color: Colors.white, size: 22),
               ),
             ],
           );
@@ -260,7 +260,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -282,13 +282,13 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
                     colors: [
-                      AppColors.primaryRed.withOpacity(0.8),
-                      AppColors.primaryRed.withOpacity(0.5),
+                      AppColors.primaryRed.withValues(alpha: 0.8),
+                      AppColors.primaryRed.withValues(alpha: 0.5),
                     ],
                   ),
-                  boxShadow: [],
+                  boxShadow: const [],
                 ),
-                child: Icon(LucideIcons.micOff, color: Colors.white, size: 24),
+                child: const Icon(LucideIcons.micOff, color: Colors.white, size: 24),
               ),
             ),
             const SizedBox(width: 32),
@@ -301,7 +301,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(

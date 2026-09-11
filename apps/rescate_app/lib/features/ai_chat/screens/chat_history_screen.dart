@@ -106,7 +106,7 @@ class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
                     textAlign: TextAlign.center,
                     style: GoogleFonts.inter(
                       fontSize: 14,
-                      color: AppColors.textDark.withOpacity(0.5),
+                      color: AppColors.textDark.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -114,7 +114,7 @@ class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
             : ListView.separated(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 itemCount: conversations.length,
-                separatorBuilder: (_, __) => Divider(
+                separatorBuilder: (_, __) => const Divider(
                   height: 1,
                   color: AppColors.cardBackgroundLight,
                 ),
@@ -131,7 +131,7 @@ class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
                       decoration: BoxDecoration(
                         color: isActive
                             ? AppColors.primaryRed
-                            : AppColors.aiAccentPink.withOpacity(0.4),
+                            : AppColors.aiAccentPink.withValues(alpha: 0.4),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -160,7 +160,7 @@ class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
                           preview,
                           style: GoogleFonts.inter(
                             fontSize: 12,
-                            color: AppColors.textDark.withOpacity(0.55),
+                            color: AppColors.textDark.withValues(alpha: 0.55),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -170,7 +170,7 @@ class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
                           _formatTimestamp(c.updatedAt),
                           style: GoogleFonts.inter(
                             fontSize: 11,
-                            color: AppColors.textDark.withOpacity(0.4),
+                            color: AppColors.textDark.withValues(alpha: 0.4),
                           ),
                         ),
                       ],
