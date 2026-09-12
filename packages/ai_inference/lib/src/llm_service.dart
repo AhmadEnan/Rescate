@@ -119,6 +119,35 @@ class LlmService extends ChangeNotifier {
   /// Returns `true` when a generation is in progress.
   bool get isGenerating => _status == LlmStatus.generating;
 
+  /// True while the turn is between "user sent" and "first token" for the
+  /// part that is NOT model decode: query embedding + RAG retrieval + prompt
+  /// assembly. On CPU-only devices this phase costs more wall time than the
+  /// decode itself, so the UI surfaces it ("Searching offline guidelines…")
+  /// instead of a bare thinking spinner.
+  bool _isSearchingContext = false;
+
+  /// See [_isSearchingContext].
+  bool get isSearchingContext => _isSearchingContext;
+
+  void _setSearchingContext(bool value) {
+    if (_isSearchingContext == value) return;
+    _isSearchingContext = value;
+    notifyListeners();
+  }
+
+  /// RAG context token budget for this device. Retrieved sentences dominate
+  /// the CPU prefill — TTFT scales ~linearly with prompt tokens (a 1400-token
+  /// context measured 130s TTFT on an Exynos 1280). Tighter budgets on
+  /// memory-constrained devices trade some citation breadth for latency;
+  /// high-RAM devices keep the validated default.
+  static int _ragContextBudget() {
+    final p = LlmDefaults.activeProfile;
+    if (p == null) return 1400;
+    if (p.isLowRam || p.totalRamMb <= 5000) return 600;
+    if (p.totalRamMb <= 7500) return 800;
+    return 1400;
+  }
+
   // ── Model lifecycle ────────────────────────────────────────────────────────
 
   /// Loads the GGUF model at [modelPath].
@@ -462,6 +491,7 @@ class LlmService extends ChangeNotifier {
     try {
       // ── RAG v3 path (non-tool turn) ──────────────────────────────────────
       stepRag = turn?.begin('rag.search');
+      _setSearchingContext(true);
       String fullPrompt;
       List<double>? queryVec;
       if (EmbedderService.instance.isReady) {
@@ -476,12 +506,15 @@ class LlmService extends ChangeNotifier {
         queryVec:
             queryVec == null ? null : Float32List.fromList(queryVec),
         enableThinking: LlmDefaults.enableThinking,
+        contextTokenBudget: _ragContextBudget(),
       );
       fullPrompt = ragResult.prompt;
+      _setSearchingContext(false);
       stepRag?.setData('sources', ragResult.sources);
       stepRag?.setData('v3', queryVec != null);
       stepRag?.setData('triaged', ragResult.triaged);
       stepRag?.setData('prompt_chars', fullPrompt.length);
+      stepRag?.setData('context_budget', _ragContextBudget());
       // Token counting is diagnostic-only and must never block a turn. It
       // runs BEFORE stepRag.end(): setData is a no-op on a closed step.
       if (kProfilerEnabled) {
@@ -649,6 +682,7 @@ class LlmService extends ChangeNotifier {
       throw LlmException('Generation failed: $e');
     } finally {
       totalSw.stop();
+      _setSearchingContext(false);
       _profileRecordGenerateStream(totalSw.elapsedMilliseconds, rssStart);
       // Only reset to ready if we didn't hit an error.
       if (_status == LlmStatus.generating) {
@@ -723,6 +757,7 @@ class LlmService extends ChangeNotifier {
       // we transparently fall back to LegacyRag so the app never blocks on
       // the embedder download.
       final TraceStep? stepRag = turn?.begin('rag.search');
+      _setSearchingContext(true);
       String prompt;
       List<String> ragSources;
       var ragTriaged = false;
@@ -742,11 +777,13 @@ class LlmService extends ChangeNotifier {
             : Float32List.fromList(queryVec),
         toolDeclarations: registry.renderDeclarations(),
         enableThinking: LlmDefaults.enableThinking,
+        contextTokenBudget: _ragContextBudget(),
       );
       prompt = ragResult.prompt;
       ragSources = ragResult.sources;
       ragTriaged = ragResult.triaged;
       ragSw.stop();
+      _setSearchingContext(false);
       stepRag?.setData('sources', ragSources);
       stepRag?.setData('v3', queryVec != null);
       stepRag?.setData('triaged', ragTriaged);
@@ -974,6 +1011,7 @@ class LlmService extends ChangeNotifier {
       _setStatus(LlmStatus.error);
       throw LlmException('Generation failed: $e');
     } finally {
+      _setSearchingContext(false);
       if (_status == LlmStatus.generating) {
         _setStatus(LlmStatus.ready);
       }

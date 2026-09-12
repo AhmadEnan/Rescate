@@ -899,7 +899,15 @@ class _LessonDetailScreenState extends State<_LessonDetailScreen> {
 
                     // Navigation Buttons
                     Padding(
-                      padding: const EdgeInsets.all(24),
+                      // Bottom inset keeps the buttons clear of the gesture
+                      // nav bar — the plain 24px padding let "Next Step" sit
+                      // half-hidden behind it on gesture-navigation devices.
+                      padding: EdgeInsets.fromLTRB(
+                        24,
+                        24,
+                        24,
+                        24 + MediaQuery.of(context).padding.bottom,
+                      ),
                       child: Row(
                         children: [
                           if (_currentIndex > 0)

@@ -1080,8 +1080,17 @@ class _ChatBubbleState extends State<_ChatBubble> {
     final showAnswerStreaming =
         !isUser && message.isStreaming && !message.isThinking;
     final showAnswerEmpty = message.text.isEmpty && !message.isThinking;
+    // True while this turn is still retrieving (embedding + RAG context
+    // build) rather than decoding. LlmService notifies only on state
+    // transitions, so this rebuild is cheap.
+    final searchingContext = !isUser &&
+        message.isThinking &&
+        message.isStreaming &&
+        LlmService.instance.isSearchingContext;
 
-    return Row(
+    return ListenableBuilder(
+      listenable: LlmService.instance,
+      builder: (context, _) => Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -1128,6 +1137,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 _ThoughtsDisclosure(
                   thoughts: message.thoughts,
                   isThinking: message.isThinking,
+                  searchingContext: searchingContext,
                   expanded: _resolveExpanded(message),
                   baseColor: textColor,
                   onToggle: () => setState(() {
@@ -1171,6 +1181,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
           ),
         ),
       ],
+      ),
     );
   }
 }
@@ -1211,6 +1222,7 @@ class _ThoughtsDisclosure extends StatelessWidget {
   const _ThoughtsDisclosure({
     required this.thoughts,
     required this.isThinking,
+    required this.searchingContext,
     required this.expanded,
     required this.baseColor,
     required this.onToggle,
@@ -1218,6 +1230,11 @@ class _ThoughtsDisclosure extends StatelessWidget {
 
   final String thoughts;
   final bool isThinking;
+
+  /// True while the turn is still embedding the query / building RAG context
+  /// (CPU-only devices spend minutes here) — shown instead of a bare
+  /// "Thinking…" so the wait reads as retrieval work, not a hang.
+  final bool searchingContext;
   final bool expanded;
   final Color baseColor;
   final VoidCallback onToggle;
@@ -1225,7 +1242,9 @@ class _ThoughtsDisclosure extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted = baseColor.withValues(alpha: 0.6);
-    final label = isThinking ? 'Thinking…' : 'Thoughts';
+    final label = isThinking
+        ? (searchingContext ? 'Searching offline guidelines…' : 'Thinking…')
+        : 'Thoughts';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
