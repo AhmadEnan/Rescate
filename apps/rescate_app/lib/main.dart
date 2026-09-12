@@ -66,7 +66,8 @@ Future<void> main() async {
     final isBudgetGpu = soc.contains('g52') ||
         soc.contains('g72') ||
         soc.contains('helio') ||
-        soc.contains('mt67');
+        soc.contains('mt67') ||
+        soc.contains('s5e8825'); // Exynos 1280 / Mali-G68: Vulkan SIGSEGVs
     final defaultUseGpu = !isBudgetGpu;
     LlmDefaults.useGpu = prefs.getBool('ai_chat.use_gpu') ?? defaultUseGpu;
 

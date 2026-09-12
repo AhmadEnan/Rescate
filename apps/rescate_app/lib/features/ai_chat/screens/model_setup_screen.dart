@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:ai_inference/ai_inference.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../state/known_models.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -37,6 +38,7 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
   // per-known-model-id download state ('chat' | 'embedder')
   final Map<String, double> _downloadProgress = {};
   final Set<String> _downloading = {};
+  final Set<String> _cancelRequested = {};
 
   LlmStatus get _status => LlmService.instance.status;
 
@@ -162,7 +164,7 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Import failed: $e');
+      setState(() => _errorMessage = _friendlyImportError(e));
     } finally {
       if (mounted) {
         setState(() {
@@ -171,6 +173,21 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
         });
       }
     }
+  }
+
+  /// Maps raw picker/platform failures to guidance the user can act on.
+  /// Samsung's cached-app freezer can suspend the storage provider during a
+  /// large SAF copy, surfacing as "Failed to read/copy" from the plugin.
+  String _friendlyImportError(Object e) {
+    final raw = e.toString();
+    if (e is PlatformException ||
+        raw.contains('Failed to read') ||
+        raw.contains('Failed to copy')) {
+      return 'Android interrupted reading the picked file. Try again — '
+          'large files may need a couple of attempts. If it keeps failing, '
+          'move the .gguf file to Internal storage/Download first.';
+    }
+    return 'Import failed: $e';
   }
 
   /// Issue #9 migration: copy a previously-picked external model into the
@@ -362,11 +379,14 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
   }
 
   /// Downloads a known model (chat or embedder) straight into the sandbox.
+  /// Interruptions keep the `.part` file; a retry resumes over HTTP Range
+  /// instead of restarting the multi-GB transfer from zero.
   Future<void> _downloadKnownModel(KnownModel model) async {
     if (_downloading.contains(model.id)) return;
     setState(() {
       _errorMessage = null;
       _downloading.add(model.id);
+      _cancelRequested.remove(model.id);
       _downloadProgress[model.id] = 0;
     });
     try {
@@ -380,7 +400,7 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
           if (total != null && total > 0) {
             setState(() => _downloadProgress[model.id] = copied / total);
           }
-          return true; // downloads are not cancellable mid-stream for now
+          return !_cancelRequested.contains(model.id);
         },
       );
       if (!mounted) return;
@@ -410,6 +430,7 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
         setState(() {
           _downloading.remove(model.id);
           _downloadProgress.remove(model.id);
+          _cancelRequested.remove(model.id);
         });
       }
     }
@@ -496,6 +517,22 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
                 minHeight: 6,
                 backgroundColor: AppColors.cardBackground.withOpacity(0.5),
                 valueColor: AlwaysStoppedAnimation(AppColors.primaryRed),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () =>
+                    setState(() => _cancelRequested.add(model.id)),
+                icon: const Icon(LucideIcons.x, size: 14),
+                label: Text(
+                  'Cancel (progress is kept)',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ),
           ] else if (!stored) ...[
