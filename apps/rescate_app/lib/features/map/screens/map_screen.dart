@@ -17,7 +17,13 @@ import '../../../core/providers/app_state.dart';
 import '../services/offline_route_service.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({super.key, this.active = true});
+
+  /// Whether the map tab is currently on screen. The download prompt must
+  /// only fire while the map is actually visible — the tab is constructed
+  /// offstage at app launch, which used to pop the "download offline maps"
+  /// sheet over whatever tab the user was on.
+  final bool active;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -167,6 +173,16 @@ class _MapScreenState extends State<MapScreen> {
     _loadDownloadedAreas();
     _startOrientationUpdates();
     _determinePosition();
+  }
+
+  @override
+  void didUpdateWidget(covariant MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Arriving on the map tab: re-check the area prompt now that the map is
+    // actually visible (the launch-time call is suppressed while offstage).
+    if (widget.active && !oldWidget.active) {
+      _maybePromptForAreaDownload();
+    }
   }
 
   @override
@@ -376,6 +392,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _maybePromptForAreaDownload() async {
+    if (!widget.active) return;
     if (_hasPromptedForCurrentArea || _hasOfflineDataFor(_myLocation)) return;
     final hasConnection = await _hasInternetConnection();
     if (!mounted || !hasConnection || _hasOfflineDataFor(_myLocation)) return;

@@ -16,8 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/providers/app_state.dart';
 import 'features/ai_chat/state/llm_state.dart';
 import 'features/ai_chat/tools/tool_dispatcher.dart';
-import 'features/home/screens/main_screen.dart';
-import 'features/onboarding/screens/onboarding_screen.dart';
+import 'features/splash/screens/splash_screen.dart';
 
 /// Global navigator key — used by AI-chat tool executors that need to surface
 /// dialogs (e.g. biometric-capture consent) without a `BuildContext` of their
@@ -220,9 +219,7 @@ class _RescateAppState extends State<RescateApp> with WidgetsBindingObserver {
             },
           ),
         },
-        home: widget.isFirstLaunch
-            ? const OnboardingScreen()
-            : MainScreen(key: mainScreenKey),
+        home: SplashScreen(firstLaunch: widget.isFirstLaunch),
       ),
     );
   }

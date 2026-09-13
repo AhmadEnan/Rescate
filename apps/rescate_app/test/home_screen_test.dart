@@ -33,7 +33,7 @@ void main() {
     // Recent-vitals FutureBuilder resolves asynchronously; settle what we can.
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('Emergency-ready,'), findsOneWidget);
+    expect(find.textContaining('welcome to Rescate'), findsOneWidget);
     expect(find.text('Ask Rescate'), findsOneWidget);
     expect(find.text('Call emergency services'), findsOneWidget);
     expect(find.text('Emergency number: 112 — no internet needed'),
@@ -68,7 +68,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     // Default tab is Home.
-    expect(find.text('Emergency-ready,'), findsOneWidget);
+    expect(find.textContaining('welcome to Rescate'), findsOneWidget);
 
     // Tap the Learn pill → educational screen's header appears.
     await tester.tap(find.byIcon(LucideIcons.bookOpen).first);
@@ -78,6 +78,6 @@ void main() {
     // Back to Home via the home pill.
     await tester.tap(find.byIcon(LucideIcons.home).first);
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('Emergency-ready,'), findsOneWidget);
+    expect(find.textContaining('welcome to Rescate'), findsOneWidget);
   });
 }

@@ -7,7 +7,11 @@ import '../../../core/providers/app_state.dart';
 import '../../settings/screens/settings_screen.dart';
 
 class TopBar extends StatelessWidget {
-  const TopBar({super.key});
+  const TopBar({super.key, this.onLogoTap});
+
+  /// Tapping the Rescate mark (top-left). Tab screens pass a handler that
+  /// returns to the Home tab, matching the app-launch destination.
+  final VoidCallback? onLogoTap;
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +19,10 @@ class TopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          const _RescateMark(),
+          GestureDetector(
+            onTap: onLogoTap,
+            child: const _RescateMark(),
+          ),
           const Spacer(),
           const _NotificationButton(),
           const SizedBox(width: 8),

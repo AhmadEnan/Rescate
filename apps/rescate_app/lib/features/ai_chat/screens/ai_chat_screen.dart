@@ -9,11 +9,12 @@ import 'package:audio_voice/audio_voice.dart';
 import 'package:offline_data/offline_data.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../home/screens/main_screen.dart';
 import '../../../core/providers/app_state.dart';
 import '../../educational/screens/educational_screen.dart';
 import '../../home/widgets/top_bar.dart';
 import '../state/llm_state.dart';
-import 'chat_history_screen.dart';
+import '../widgets/chat_history_sidebar.dart';
 import 'model_setup_screen.dart';
 import 'voice_chat_screen.dart';
 import '../../../core/providers/demo_state.dart';
@@ -128,12 +129,14 @@ class _AiChatScreenState extends State<AiChatScreen>
     );
   }
 
+  bool _sidebarOpen = false;
+
   void _openHistory() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const ChatHistoryScreen(),
-      ),
-    );
+    setState(() => _sidebarOpen = true);
+  }
+
+  void _closeHistory() {
+    if (mounted) setState(() => _sidebarOpen = false);
   }
 
   void _openVoiceChat() {
@@ -184,9 +187,14 @@ class _AiChatScreenState extends State<AiChatScreen>
         bottom: false,
         child: Directionality(
           textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
-          child: Column(
+          child: Stack(
             children: [
-              const TopBar(),
+              Column(
+                children: [
+              TopBar(
+              onLogoTap: () =>
+                  mainScreenKey.currentState?.switchTab(MainScreen.tabHome),
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                 child: Align(
@@ -219,6 +227,22 @@ class _AiChatScreenState extends State<AiChatScreen>
               ),
               Expanded(child: _buildMessageList(isArabic)),
               _buildInputBar(isArabic),
+            ],
+              ),
+              ChatHistorySidebar(
+                open: _sidebarOpen,
+                isArabic: isArabic,
+                onClose: _closeHistory,
+                onNewChat: () async {
+                  await _newChat();
+                  _closeHistory();
+                },
+                onSelect: (id) async {
+                  await _llmState.selectConversation(id);
+                  _closeHistory();
+                },
+                onDelete: (id) => _llmState.deleteConversation(id),
+              ),
             ],
           ),
         ),
@@ -539,15 +563,8 @@ class _ChatToolbar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: AppColors.primaryRed.withOpacity(0.6),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
+          _toolbarButton(LucideIcons.menu, 'Chats', onHistory),
+          const SizedBox(width: 4),
           Expanded(
             child: Text(
               title.replaceAll(RegExp(r'\n\n\[SYSTEM_VITALS_CONTEXT:.*?\]'), ''),

@@ -44,6 +44,14 @@ class MainScreenState extends State<MainScreen> {
     MeasurementsScreen(),
   ];
 
+  Widget _screenAt(int index) {
+    // Map gets its visibility flag so launch-time prompts stay offstage.
+    if (index == MainScreen.tabMap) {
+      return MapScreen(active: _currentIndex == MainScreen.tabMap);
+    }
+    return _screens[index];
+  }
+
   @override
   Widget build(BuildContext context) {
     final view = View.of(context);
@@ -69,7 +77,7 @@ class MainScreenState extends State<MainScreen> {
           if (isMapOrAi) {
             return Offstage(
               offstage: _currentIndex != index,
-              child: _screens[index],
+              child: _screenAt(index),
             );
           }
 
@@ -85,7 +93,7 @@ class MainScreenState extends State<MainScreen> {
               opacity: _currentIndex == index ? 1.0 : 0.0,
               child: IgnorePointer(
                 ignoring: _currentIndex != index,
-                child: _screens[index],
+                child: _screenAt(index),
               ),
             ),
           );

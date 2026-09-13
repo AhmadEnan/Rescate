@@ -61,7 +61,10 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const TopBar(),
+            TopBar(
+              onLogoTap: () =>
+                  mainScreenKey.currentState?.switchTab(MainScreen.tabHome),
+              ),
             const SizedBox(height: 6),
             _Greeting(isArabic: isArabic),
             const SizedBox(height: 14),
@@ -96,25 +99,39 @@ class _Greeting extends StatelessWidget {
 
   final bool isArabic;
 
+  static String _greetingFor(DateTime now, bool isArabic) {
+    final hour = now.hour;
+    if (hour < 12) {
+      return isArabic ? 'صباح الخير' : 'Good morning';
+    }
+    if (hour < 17) {
+      return isArabic ? 'يوم سعيد' : 'Good afternoon';
+    }
+    return isArabic ? 'مساء الخير' : 'Good evening';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          isArabic ? 'جاهز لأي طوارئ' : 'Emergency-ready,',
+          '${_greetingFor(DateTime.now(), isArabic)} — '
+          '${isArabic ? 'أهلاً بك في ريسكات' : 'welcome to Rescate'}',
           style: GoogleFonts.poppins(
-            fontSize: 26,
+            fontSize: 24,
             fontWeight: FontWeight.w800,
             color: AppColors.textDark,
-            height: 1.15,
+            height: 1.18,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
-          isArabic ? 'يعمل دون اتصال. دائماً.' : 'works offline. Always.',
+          isArabic
+              ? 'كل شيء يعمل دون اتصال — جاهز لأي طارئ.'
+              : 'Everything works offline — ready whenever you need it.',
           style: GoogleFonts.inter(
-            fontSize: 14,
+            fontSize: 13.5,
             color: AppColors.textDark.withOpacity(0.55),
           ),
         ),
@@ -392,6 +409,8 @@ class _SosCard extends StatelessWidget {
 class _ContinueLearningCard extends StatelessWidget {
   const _ContinueLearningCard();
 
+  static const String _cprLessonId = 'cpr_basics';
+
   @override
   Widget build(BuildContext context) {
     final isArabic = AppStateProvider.of(context).isArabic;
@@ -409,54 +428,102 @@ class _ContinueLearningCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.cardBackgroundLight),
         ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/learn/cpr/step1/frame1.png',
-                width: 64,
-                height: 64,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isArabic ? 'تابع التعلّم' : 'Continue learning',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.6,
-                      color: AppColors.primaryRed,
+        child: FutureBuilder<(int, int, bool)>(
+          // (furthestStepReached, totalSteps, completed) — persisted by the
+          // lesson screen so progress survives launches.
+          future: LessonProgress.load(_cprLessonId),
+          builder: (context, snapshot) {
+            final (reached, total, completed) = snapshot.data ?? (0, 0, false);
+            final effectiveTotal = total > 0 ? total : 4;
+
+            final String overline;
+            final Color overlineColor;
+            final String subtitle;
+            if (completed) {
+              overline = isArabic ? 'أكملت الدرس ✓' : 'Lesson complete ✓';
+              overlineColor = const Color(0xFF3E9B4F);
+              subtitle = isArabic ? 'اضغط للمراجعة' : 'Tap to review';
+            } else if (reached > 0) {
+              overline = isArabic ? 'تابع التعلّم' : 'Continue learning';
+              overlineColor = AppColors.primaryRed;
+              subtitle = isArabic
+                  ? 'الخطوة $reached من $effectiveTotal'
+                  : 'Step $reached of $effectiveTotal';
+            } else {
+              overline = isArabic ? 'تابع التعلّم' : 'Continue learning';
+              overlineColor = AppColors.primaryRed;
+              subtitle =
+                  isArabic ? '٤ خطوات · ١٢ دقيقة' : '4 steps · 12 min';
+            }
+
+            return Column(
+              children: [
+                Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.asset(
+                        'assets/learn/cpr/step1/frame1.png',
+                        width: 64,
+                        height: 64,
+                        fit: BoxFit.cover,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    isArabic ? 'أساسيات الإنعاش القلبي' : 'CPR Basics',
-                    style: GoogleFonts.poppins(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDark,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            overline,
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6,
+                              color: overlineColor,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            isArabic ? 'أساسيات الإنعاش القلبي' : 'CPR Basics',
+                            style: GoogleFonts.poppins(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: GoogleFonts.inter(
+                              fontSize: 11.5,
+                              color: AppColors.textDark.withOpacity(0.55),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    isArabic ? '٤ خطوات · ١٢ دقيقة' : '4 steps · 12 min',
-                    style: GoogleFonts.inter(
-                      fontSize: 11.5,
-                      color: AppColors.textDark.withOpacity(0.55),
+                    const Icon(LucideIcons.chevronRight,
+                        size: 20, color: AppColors.textDark),
+                  ],
+                ),
+                if (!completed && reached > 0) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: reached / effectiveTotal,
+                      minHeight: 5,
+                      backgroundColor:
+                          AppColors.cardBackground.withOpacity(0.6),
+                      valueColor:
+                          const AlwaysStoppedAnimation(AppColors.primaryRed),
                     ),
                   ),
                 ],
-              ),
-            ),
-            const Icon(LucideIcons.chevronRight,
-                size: 20, color: AppColors.textDark),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
