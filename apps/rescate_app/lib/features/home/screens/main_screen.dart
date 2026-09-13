@@ -7,18 +7,27 @@ import '../../ai_chat/screens/ai_chat_screen.dart';
 import '../../educational/screens/educational_screen.dart';
 import '../../community/screens/community_screen.dart';
 import '../../measurements/screens/measurements_screen.dart';
+import 'home_screen.dart';
 
 final GlobalKey<MainScreenState> mainScreenKey = GlobalKey<MainScreenState>();
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
+  // Tab indices — referenced by Home deep links and readiness pills.
+  static const int tabHome = 0;
+  static const int tabLearn = 1;
+  static const int tabMap = 2;
+  static const int tabAiChat = 3;
+  static const int tabConsult = 4;
+  static const int tabVitals = 5;
+
   @override
   State<MainScreen> createState() => MainScreenState();
 }
 
 class MainScreenState extends State<MainScreen> {
-  int _currentIndex = 2; // AI Chat is default
+  int _currentIndex = MainScreen.tabHome; // opens on Home
 
   void switchTab(int index) {
     setState(() {
@@ -27,6 +36,7 @@ class MainScreenState extends State<MainScreen> {
   }
 
   final List<Widget> _screens = const [
+    HomeScreen(),
     EducationalScreen(),
     MapScreen(),
     AiChatScreen(),
@@ -40,12 +50,21 @@ class MainScreenState extends State<MainScreen> {
     final keyboardHeight = view.viewInsets.bottom / view.devicePixelRatio;
     final isKeyboardOpen = keyboardHeight > 0;
 
-    return Scaffold(
+    return PopScope(
+      canPop: _currentIndex == MainScreen.tabHome,
+      onPopInvokedWithResult: (didPop, result) {
+        // Back from a feature tab lands on Home first; a second back exits.
+        if (!didPop && _currentIndex != MainScreen.tabHome) {
+          switchTab(MainScreen.tabHome);
+        }
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
       body: Stack(
         children: List.generate(_screens.length, (index) {
-          final isMapOrAi = index == 1 || index == 2;
+          final isMapOrAi =
+              index == MainScreen.tabMap || index == MainScreen.tabAiChat;
           
           if (isMapOrAi) {
             return Offstage(
@@ -94,37 +113,44 @@ class MainScreenState extends State<MainScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _NavItem(
+                    icon: LucideIcons.home,
+                    label: 'Home',
+                    index: MainScreen.tabHome,
+                    currentIndex: _currentIndex,
+                    onTap: (i) => setState(() => _currentIndex = i),
+                  ),
+                  _NavItem(
                     icon: LucideIcons.bookOpen,
                     label: 'Learn',
-                    index: 0,
+                    index: MainScreen.tabLearn,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
                   _NavItem(
                     icon: LucideIcons.map,
                     label: 'Map',
-                    index: 1,
+                    index: MainScreen.tabMap,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
                   _NavItem(
                     icon: LucideIcons.bot,
                     label: 'AI Chat',
-                    index: 2,
+                    index: MainScreen.tabAiChat,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
                   _NavItem(
                     icon: LucideIcons.stethoscope,
                     label: 'Consult',
-                    index: 3,
+                    index: MainScreen.tabConsult,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
                   _NavItem(
                     icon: LucideIcons.activity,
                     label: 'Vitals',
-                    index: 4,
+                    index: MainScreen.tabVitals,
                     currentIndex: _currentIndex,
                     onTap: (i) => setState(() => _currentIndex = i),
                   ),
@@ -133,6 +159,7 @@ class MainScreenState extends State<MainScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

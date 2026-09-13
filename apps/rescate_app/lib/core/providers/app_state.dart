@@ -5,7 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppState extends ChangeNotifier {
   String _language = 'English';
   bool _notificationsEnabled = true;
+  String _emergencyNumber = '112';
 
+  /// Local emergency-services number the Home SOS button dials. Ships with
+  /// the GSM-standard 112; overridable per region via SharedPreferences
+  /// ('sosNumber') until a Settings editor lands.
+  String get emergencyNumber => _emergencyNumber;
   String get language => _language;
   bool get notificationsEnabled => _notificationsEnabled;
 
@@ -17,7 +22,17 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _language = prefs.getString('language') ?? 'English';
     _notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
+    _emergencyNumber = prefs.getString('sosNumber') ?? '112';
     notifyListeners();
+  }
+
+  Future<void> setEmergencyNumber(String number) async {
+    final cleaned = number.trim();
+    if (cleaned.isEmpty || cleaned == _emergencyNumber) return;
+    _emergencyNumber = cleaned;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('sosNumber', cleaned);
   }
 
   void setLanguage(String lang) async {

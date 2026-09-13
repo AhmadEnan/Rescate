@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/app_colors.dart';
@@ -69,7 +71,10 @@ class _NotificationButtonState extends State<_NotificationButton> {
   OverlayEntry? _overlayEntry;
   bool _isOpen = false;
 
-  final Stream<Map<String, String>> _notificationStream = Stream.periodic(
+  // Single-subscription periodic stream: cancelling the subscription in
+  // dispose() stops its timer. (A broadcast Stream.periodic keeps ticking
+  // with no listeners — every TopBar was leaking one of those.)
+  Stream<Map<String, String>> _notificationStream() => Stream.periodic(
     const Duration(seconds: 15),
     (count) => {
       'title_en': 'Emergency Update #${count + 1}',
@@ -79,7 +84,9 @@ class _NotificationButtonState extends State<_NotificationButton> {
       'time_en': 'Just now',
       'time_ar': 'الآن',
     },
-  ).asBroadcastStream();
+  );
+
+  StreamSubscription<Map<String, String>>? _notificationSub;
 
   Map<String, String> _currentNotification = {
     'title_en': 'Emergency Update',
@@ -94,7 +101,7 @@ class _NotificationButtonState extends State<_NotificationButton> {
   @override
   void initState() {
     super.initState();
-    _notificationStream.listen((data) {
+    _notificationSub = _notificationStream().listen((data) {
       if (mounted) {
         setState(() {
           _currentNotification = data;
@@ -104,6 +111,12 @@ class _NotificationButtonState extends State<_NotificationButton> {
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _notificationSub?.cancel();
+    super.dispose();
   }
 
   void _toggleDropdown() {
