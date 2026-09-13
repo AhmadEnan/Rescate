@@ -44,6 +44,7 @@ class _AiChatScreenState extends State<AiChatScreen>
   @override
   void initState() {
     super.initState();
+    _controller.addListener(_onTextChanged);
     _llmState.addListener(_onStateChanged);
     _tts.addListener(_onVoiceChanged);
     _stt.addListener(_onVoiceChanged);
@@ -54,9 +55,15 @@ class _AiChatScreenState extends State<AiChatScreen>
     _llmState.removeListener(_onStateChanged);
     _tts.removeListener(_onVoiceChanged);
     _stt.removeListener(_onVoiceChanged);
+    _controller.removeListener(_onTextChanged);
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// The composer swaps voice ↔ send based on text presence.
+  void _onTextChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onVoiceChanged() {
@@ -192,8 +199,9 @@ class _AiChatScreenState extends State<AiChatScreen>
               Column(
                 children: [
               TopBar(
-              onLogoTap: () =>
-                  mainScreenKey.currentState?.switchTab(MainScreen.tabHome),
+                onLogoTap: () =>
+                    mainScreenKey.currentState?.switchTab(MainScreen.tabHome),
+                onMenuTap: _openHistory,
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -213,19 +221,16 @@ class _AiChatScreenState extends State<AiChatScreen>
                 onSetupTap: _openModelSetup,
                 llmState: _llmState,
               ),
-              _ChatToolbar(
-                onNewChat: _newChat,
-                onHistory: _openHistory,
-                onVoiceChat: _openVoiceChat,
-                title: _llmState.conversations.isEmpty
-                    ? 'New chat'
-                    : _llmState.activeConversation.title,
-                ttsEnabled: _tts.isEnabled,
-                isSpeaking: _tts.isSpeaking,
-                onToggleTts: () => _tts.setEnabled(!_tts.isEnabled),
-                onStopTts: () => _tts.stop(),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragEnd: (details) {
+                    final v = details.primaryVelocity ?? 0;
+                    if (v > 250) _openHistory(); // swipe right → chats
+                  },
+                  child: _buildMessageList(isArabic),
+                ),
               ),
-              Expanded(child: _buildMessageList(isArabic)),
               _buildInputBar(isArabic),
             ],
               ),
@@ -287,9 +292,14 @@ class _AiChatScreenState extends State<AiChatScreen>
 
   Widget _buildInputBar(bool isArabic) {
     final canSend = _llmState.canChat && !_llmState.isGenerating;
-    final view = View.of(context);
-    final keyboardHeight = view.viewInsets.bottom / view.devicePixelRatio;
-    final bottomPadding = keyboardHeight > 0 ? 8.0 : 110.0;
+    // Keyboard open → hug it; keyboard closed → clear the bottom nav bar
+    // (extendBody leaves the body behind it) plus the gesture inset.
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    // Keyboard closed: paddingOf already includes the bottom-nav height
+    // (extendBody) — just add a small breathing gap above the pills.
+    final bottomPadding = keyboardOpen
+        ? 8.0
+        : MediaQuery.paddingOf(context).bottom + 10.0;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 8, 20, bottomPadding),
@@ -427,6 +437,34 @@ class _AiChatScreenState extends State<AiChatScreen>
                   ),
                 ),
               ),
+              const SizedBox(width: 6),
+              // ── TTS auto-read toggle (kept beside the mic) ─────────────
+              GestureDetector(
+                onTap: _tts.isSpeaking
+                    ? _tts.stop
+                    : () => _tts.setEnabled(!_tts.isEnabled),
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: _tts.isEnabled
+                        ? AppColors.primaryRed.withOpacity(0.15)
+                        : AppColors.aiAccentPink.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _tts.isSpeaking
+                        ? LucideIcons.volumeX
+                        : (_tts.isEnabled
+                            ? LucideIcons.volume2
+                            : LucideIcons.volumeX),
+                    size: 17,
+                    color: _tts.isEnabled
+                        ? AppColors.primaryRed
+                        : AppColors.textDark.withOpacity(0.35),
+                  ),
+                ),
+              ),
               const SizedBox(width: 8),
               // ── Text field ─────────────────────────────────────────────
               Expanded(
@@ -491,146 +529,60 @@ class _AiChatScreenState extends State<AiChatScreen>
                 ),
               ),
               const SizedBox(width: 8),
-              // ── Send button ────────────────────────────────────────────
+              // ── Voice / Send ───────────────────────────────────────────
+              // Empty input → voice chat (blue waveform); typing swaps the
+              // send button in, ChatGPT-style.
               GestureDetector(
-                onTap: canSend ? () => _sendMessage(isArabic) : null,
+                onTap: () {
+                  if (_controller.text.trim().isNotEmpty) {
+                    if (canSend) _sendMessage(isArabic);
+                  } else if (canSend) {
+                    _openVoiceChat();
+                  }
+                },
                 child: Container(
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
-                    color: canSend
+                    color: _controller.text.trim().isEmpty
                         ? AppColors.primaryRed
-                        : AppColors.cardBackground,
+                        : (canSend
+                            ? AppColors.primaryRed
+                            : AppColors.cardBackground),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    _llmState.isGenerating
-                        ? LucideIcons.loader
-                        : LucideIcons.send,
-                    color: canSend
-                        ? Colors.white
-                        : AppColors.textDark.withOpacity(0.3),
-                    size: 20,
-                  ),
+                  child: _controller.text.trim().isEmpty
+                      ? Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              _waveBar(5),
+                              const SizedBox(width: 3),
+                              _waveBar(12),
+                              const SizedBox(width: 3),
+                              _waveBar(17),
+                              const SizedBox(width: 3),
+                              _waveBar(10),
+                              const SizedBox(width: 3),
+                              _waveBar(5),
+                            ],
+                          ),
+                        )
+                      : Icon(
+                          _llmState.isGenerating
+                              ? LucideIcons.loader
+                              : LucideIcons.send,
+                          color: canSend
+                              ? Colors.white
+                              : AppColors.textDark.withOpacity(0.3),
+                          size: 20,
+                        ),
                 ),
               ),
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Chat toolbar (new / history) ───────────────────────────────────────────────
-
-class _ChatToolbar extends StatelessWidget {
-  const _ChatToolbar({
-    required this.onNewChat,
-    required this.onHistory,
-    required this.onVoiceChat,
-    required this.title,
-    required this.ttsEnabled,
-    required this.isSpeaking,
-    required this.onToggleTts,
-    required this.onStopTts,
-  });
-
-  final VoidCallback onNewChat;
-  final VoidCallback onHistory;
-  final VoidCallback onVoiceChat;
-  final String title;
-  final bool ttsEnabled;
-  final bool isSpeaking;
-  final VoidCallback onToggleTts;
-  final VoidCallback onStopTts;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 4, 20, 6),
-      padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _toolbarButton(LucideIcons.menu, 'Chats', onHistory),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(
-              title.replaceAll(RegExp(r'\n\n\[SYSTEM_VITALS_CONTEXT:.*?\]'), ''),
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          // ── TTS toggle ─────────────────────────────────────────
-          GestureDetector(
-            onTap: isSpeaking ? onStopTts : onToggleTts,
-            child: Tooltip(
-              message: isSpeaking
-                  ? 'Stop speaking'
-                  : (ttsEnabled ? 'Disable auto-read' : 'Enable auto-read'),
-              child: Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: ttsEnabled
-                      ? AppColors.primaryRed.withOpacity(0.15)
-                      : AppColors.primaryRed.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  isSpeaking
-                      ? LucideIcons.volumeX
-                      : ttsEnabled
-                          ? LucideIcons.volume2
-                          : LucideIcons.volumeX,
-                  size: 16,
-                  color: ttsEnabled ? AppColors.primaryRed : AppColors.primaryRed.withOpacity(0.4),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          // Voice chat button
-          _toolbarButton(LucideIcons.headphones, 'Voice chat', onVoiceChat),
-          const SizedBox(width: 4),
-          _toolbarButton(LucideIcons.plus, 'New chat', onNewChat),
-          const SizedBox(width: 4),
-          _toolbarButton(LucideIcons.history, 'History', onHistory),
-        ],
-      ),
-    );
-  }
-
-  Widget _toolbarButton(IconData icon, String tooltip, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Tooltip(
-        message: tooltip,
-        child: Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: AppColors.primaryRed.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, size: 16, color: AppColors.primaryRed),
-        ),
       ),
     );
   }
@@ -1530,6 +1482,25 @@ class _VitalsPickerSheetState extends State<_VitalsPickerSheet> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// One white rounded bar of the voice waveform button.
+class _waveBar extends StatelessWidget {
+  const _waveBar(this.height);
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 3.5,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(2),
       ),
     );
   }

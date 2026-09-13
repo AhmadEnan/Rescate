@@ -67,6 +67,7 @@ flutter:
   assets:
     - assets/
     - assets/logo.png
+    - assets/chatbot_icon.png
     - assets/learn/cpr/step1/
     - assets/learn/cpr/step2/
     - assets/learn/cpr/step3/

@@ -60,7 +60,14 @@ class ChatHistorySidebar extends StatelessWidget {
               top: 0,
               bottom: 0,
               width: 272,
-              child: Container(
+              child: GestureDetector(
+                // Swipe left anywhere on the open panel (or scrim) to close.
+                onHorizontalDragEnd: (details) {
+                  final v = details.primaryVelocity ?? 0;
+                  if (open && v < -250) onClose();
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Container(
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.horizontal(
@@ -233,6 +240,7 @@ class ChatHistorySidebar extends StatelessWidget {
                   },
                 ),
               ),
+            ),
             ),
           ],
         ),

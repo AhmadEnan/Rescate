@@ -7,44 +7,84 @@ import '../../../core/providers/app_state.dart';
 import '../../settings/screens/settings_screen.dart';
 
 class TopBar extends StatelessWidget {
-  const TopBar({super.key, this.onLogoTap});
+  const TopBar({super.key, this.onLogoTap, this.onMenuTap});
 
-  /// Tapping the Rescate mark (top-left). Tab screens pass a handler that
+  /// Tapping the Rescate mark (centered). Tab screens pass a handler that
   /// returns to the Home tab, matching the app-launch destination.
   final VoidCallback? onLogoTap;
 
+  /// When set, the LEFT slot shows a ☰ menu button (AI chat's history
+  /// sidebar) and notifications move next to Settings on the right. When
+  /// null, notifications sit on the left.
+  final VoidCallback? onMenuTap;
+
   @override
   Widget build(BuildContext context) {
+    final settingsButton = GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SettingsScreen()),
+        );
+      },
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: const BoxDecoration(
+          color: AppColors.cardBackground,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          LucideIcons.settings,
+          size: 20,
+          color: AppColors.textDark,
+        ),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
+          // Left slot: ☰ menu (AI chat) or notifications; logo stays centered
+          // regardless of the two slots' widths.
+          Expanded(
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: onMenuTap != null
+                  ? GestureDetector(
+                      onTap: onMenuTap,
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: const BoxDecoration(
+                          color: AppColors.cardBackground,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          LucideIcons.menu,
+                          size: 20,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                    )
+                  : const _NotificationButton(),
+            ),
+          ),
           GestureDetector(
             onTap: onLogoTap,
             child: const _RescateMark(),
           ),
-          const Spacer(),
-          const _NotificationButton(),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-            },
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: const BoxDecoration(
-                color: AppColors.cardBackground,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                LucideIcons.settings,
-                size: 20,
-                color: AppColors.textDark,
-              ),
+          Expanded(
+            child: Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: onMenuTap != null
+                  ? Row(mainAxisSize: MainAxisSize.min, children: [
+                      const _NotificationButton(),
+                      const SizedBox(width: 8),
+                      settingsButton,
+                    ])
+                  : settingsButton,
             ),
           ),
         ],

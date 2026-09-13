@@ -27,7 +27,7 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  testWidgets('HomeScreen renders greeting, features, SOS and tip',
+  testWidgets('HomeScreen renders greeting, features, SOS and learning',
       (tester) async {
     await tester.pumpWidget(_wrap(const HomeScreen()));
     // Recent-vitals FutureBuilder resolves asynchronously; settle what we can.
@@ -38,16 +38,9 @@ void main() {
     expect(find.text('Call emergency services'), findsOneWidget);
     expect(find.text('Emergency number: 112 — no internet needed'),
         findsOneWidget);
-    expect(find.text('Learn'), findsOneWidget);
     expect(find.text('Map'), findsOneWidget);
     expect(find.text('CPR Basics'), findsOneWidget);
     expect(find.text('Recent vitals'), findsOneWidget);
-    // Exactly one quick-tip banner is shown (rotates by day).
-    expect(
-        find.byWidgetPredicate((w) =>
-            w is RichText && (w.text.toPlainText().contains('CPR —') ||
-                w.text.toPlainText().contains('Burns —'))),
-        findsOneWidget);
   });
 
   testWidgets('HomeScreen shows the configured emergency number',

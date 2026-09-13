@@ -27,7 +27,8 @@ class HomeScreen extends StatelessWidget {
   Future<void> _openDialer(BuildContext context, String number) async {
     final uri = Uri(scheme: 'tel', path: number);
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!launched && context.mounted) {
         _showDialerError(context, number);
       }
@@ -64,7 +65,7 @@ class HomeScreen extends StatelessWidget {
             TopBar(
               onLogoTap: () =>
                   mainScreenKey.currentState?.switchTab(MainScreen.tabHome),
-              ),
+            ),
             const SizedBox(height: 6),
             _Greeting(isArabic: isArabic),
             const SizedBox(height: 14),
@@ -72,19 +73,17 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 16),
             _AskRescateCard(isArabic: isArabic),
             const SizedBox(height: 16),
-            _FeatureGrid(isArabic: isArabic),
-            const SizedBox(height: 16),
             _SosCard(
               number: sosNumber,
               isArabic: isArabic,
               onCall: () => _openDialer(context, sosNumber),
             ),
             const SizedBox(height: 16),
-            const _ContinueLearningCard(),
+            _MapCard(isArabic: isArabic),
+            const SizedBox(height: 16),
+            const _LearningCard(),
             const SizedBox(height: 16),
             const _RecentVitalsCard(),
-            const SizedBox(height: 16),
-            _QuickTipBanner(isArabic: isArabic),
           ],
         ),
       ),
@@ -167,15 +166,13 @@ class _AskRescateCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: const BoxDecoration(
-                color: AppColors.aiAccentPink,
-                shape: BoxShape.circle,
+            ClipOval(
+              child: Image.asset(
+                'assets/chatbot_icon.png',
+                width: 52,
+                height: 52,
+                fit: BoxFit.cover,
               ),
-              child: const Icon(LucideIcons.bot,
-                  size: 24, color: AppColors.primaryRed),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -204,111 +201,6 @@ class _AskRescateCard extends StatelessWidget {
               ),
             ),
             const Icon(LucideIcons.chevronRight, color: Colors.white, size: 22),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Feature grid ──────────────────────────────────────────────────────────────
-
-class _FeatureGrid extends StatelessWidget {
-  const _FeatureGrid({required this.isArabic});
-
-  final bool isArabic;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _FeatureCard(
-            icon: LucideIcons.bookOpen,
-            tint: AppColors.onboardAccent1,
-            title: isArabic ? 'تعلّم' : 'Learn',
-            subtitle: isArabic ? 'إسعافات أولية' : 'First aid',
-            tabIndex: MainScreen.tabLearn,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _FeatureCard(
-            icon: LucideIcons.map,
-            tint: AppColors.gpsAccentBlue,
-            title: isArabic ? 'الخريطة' : 'Map',
-            subtitle: isArabic ? 'خرائط دون اتصال' : 'Offline maps',
-            tabIndex: MainScreen.tabMap,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FeatureCard extends StatelessWidget {
-  const _FeatureCard({
-    required this.icon,
-    required this.tint,
-    required this.title,
-    required this.subtitle,
-    required this.tabIndex,
-  });
-
-  final IconData icon;
-  final Color tint;
-  final String title;
-  final String subtitle;
-  final int tabIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => mainScreenKey.currentState?.switchTab(tabIndex),
-      child: Container(
-        height: 92,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground.withOpacity(0.55),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.cardBackgroundLight),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
-              child: Icon(icon, size: 20, color: AppColors.textDark),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: AppColors.textDark.withOpacity(0.55),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -404,12 +296,98 @@ class _SosCard extends StatelessWidget {
   }
 }
 
-// ── Continue learning ─────────────────────────────────────────────────────────
+// ── Map card ──────────────────────────────────────────────────────────────────
 
-class _ContinueLearningCard extends StatelessWidget {
-  const _ContinueLearningCard();
+class _MapCard extends StatelessWidget {
+  const _MapCard({required this.isArabic});
 
-  static const String _cprLessonId = 'cpr_basics';
+  final bool isArabic;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => mainScreenKey.currentState?.switchTab(MainScreen.tabMap),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground.withOpacity(0.55),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.cardBackgroundLight),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(
+                color: AppColors.gpsAccentBlue,
+                shape: BoxShape.circle,
+              ),
+              child:
+                  const Icon(LucideIcons.map, size: 22, color: AppColors.textDark),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isArabic ? 'الخريطة' : 'Map',
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  Text(
+                    isArabic
+                        ? 'خرائط وملاحة دون اتصال'
+                        : 'Offline maps and navigation',
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      color: AppColors.textDark.withOpacity(0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.chevronRight,
+                size: 20, color: AppColors.textDark),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Learning card (general — first incomplete lesson wins) ────────────────────
+
+class _LessonEntry {
+  final String id;
+  final String titleEn;
+  final String titleAr;
+  final String artAsset;
+
+  const _LessonEntry({
+    required this.id,
+    required this.titleEn,
+    required this.titleAr,
+    required this.artAsset,
+  });
+}
+
+const List<_LessonEntry> _kLessons = <_LessonEntry>[
+  _LessonEntry(
+    id: 'cpr_basics',
+    titleEn: 'CPR Basics',
+    titleAr: 'أساسيات الإنعاش القلبي',
+    artAsset: 'assets/learn/cpr/step1/frame1.png',
+  ),
+];
+
+class _LearningCard extends StatelessWidget {
+  const _LearningCard();
 
   @override
   Widget build(BuildContext context) {
@@ -428,32 +406,60 @@ class _ContinueLearningCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.cardBackgroundLight),
         ),
-        child: FutureBuilder<(int, int, bool)>(
-          // (furthestStepReached, totalSteps, completed) — persisted by the
-          // lesson screen so progress survives launches.
-          future: LessonProgress.load(_cprLessonId),
+        child: FutureBuilder<List<(int, int, bool)>>(
+          // One progress probe per lesson: (reached, total, completed).
+          future: Future.wait(
+              _kLessons.map((l) => LessonProgress.load(l.id)).toList()),
           builder: (context, snapshot) {
-            final (reached, total, completed) = snapshot.data ?? (0, 0, false);
-            final effectiveTotal = total > 0 ? total : 4;
+            final progress =
+                snapshot.data ?? const <(int, int, bool)>[];
+
+            // General pick: first not-completed lesson; otherwise review.
+            _LessonEntry? picked;
+            var (pickedReached, pickedTotal, pickedCompleted) = (0, 0, false);
+            for (var i = 0; i < _kLessons.length; i++) {
+              final (r, t, c) =
+                  progress.length > i ? progress[i] : (0, 0, false);
+              if (picked == null) {
+                picked = _kLessons[i];
+                pickedReached = r;
+                pickedTotal = t;
+                pickedCompleted = c;
+              }
+              if (!c) {
+                picked = _kLessons[i];
+                pickedReached = r;
+                pickedTotal = t;
+                pickedCompleted = c;
+                break;
+              }
+            }
+            if (picked == null) {
+              return const SizedBox.shrink();
+            }
+            final effectiveTotal =
+                pickedTotal > 0 ? pickedTotal : 4;
 
             final String overline;
             final Color overlineColor;
             final String subtitle;
-            if (completed) {
+            if (pickedCompleted) {
               overline = isArabic ? 'أكملت الدرس ✓' : 'Lesson complete ✓';
               overlineColor = const Color(0xFF3E9B4F);
               subtitle = isArabic ? 'اضغط للمراجعة' : 'Tap to review';
-            } else if (reached > 0) {
-              overline = isArabic ? 'تابع التعلّم' : 'Continue learning';
+            } else if (pickedReached > 0) {
+              overline = isArabic ? 'أكمل تعلّمك' : 'Keep learning';
               overlineColor = AppColors.primaryRed;
               subtitle = isArabic
-                  ? 'الخطوة $reached من $effectiveTotal'
-                  : 'Step $reached of $effectiveTotal';
+                  ? 'الخطوة $pickedReached من $effectiveTotal'
+                  : 'Step $pickedReached of $effectiveTotal';
             } else {
-              overline = isArabic ? 'تابع التعلّم' : 'Continue learning';
+              overline =
+                  isArabic ? 'ابدأ التعلّم' : 'Start learning';
               overlineColor = AppColors.primaryRed;
-              subtitle =
-                  isArabic ? '٤ خطوات · ١٢ دقيقة' : '4 steps · 12 min';
+              subtitle = isArabic
+                  ? '٤ خطوات · ١٢ دقيقة'
+                  : '4 steps · 12 min';
             }
 
             return Column(
@@ -463,7 +469,7 @@ class _ContinueLearningCard extends StatelessWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.asset(
-                        'assets/learn/cpr/step1/frame1.png',
+                        picked.artAsset,
                         width: 64,
                         height: 64,
                         fit: BoxFit.cover,
@@ -485,7 +491,7 @@ class _ContinueLearningCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            isArabic ? 'أساسيات الإنعاش القلبي' : 'CPR Basics',
+                            isArabic ? picked.titleAr : picked.titleEn,
                             style: GoogleFonts.poppins(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
@@ -507,12 +513,12 @@ class _ContinueLearningCard extends StatelessWidget {
                         size: 20, color: AppColors.textDark),
                   ],
                 ),
-                if (!completed && reached > 0) ...[
+                if (!pickedCompleted && pickedReached > 0) ...[
                   const SizedBox(height: 10),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
-                      value: reached / effectiveTotal,
+                      value: pickedReached / effectiveTotal,
                       minHeight: 5,
                       backgroundColor:
                           AppColors.cardBackground.withOpacity(0.6),
@@ -556,8 +562,9 @@ class _RecentVitalsCard extends StatelessWidget {
         builder: (context, snapshot) {
           // Readings are optional garnish: on DB errors (e.g. tests) the
           // section renders as an empty-state link to the Vitals tab.
-          final readings =
-              (snapshot.hasData && snapshot.data!.isNotEmpty) ? snapshot.data! : const <BiometricMeasurement>[];
+          final readings = (snapshot.hasData && snapshot.data!.isNotEmpty)
+              ? snapshot.data!
+              : const <BiometricMeasurement>[];
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -629,80 +636,6 @@ class _RecentVitalsCard extends StatelessWidget {
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-// ── Quick tip ─────────────────────────────────────────────────────────────────
-
-class _QuickTipBanner extends StatelessWidget {
-  const _QuickTipBanner({required this.isArabic});
-
-  final bool isArabic;
-
-  static const List<(String, String)> _tipsEn = <(String, String)>[
-    ('CPR', 'Push hard and fast: 100–120 compressions per minute.'),
-    ('Burns', 'Cool the burn with running water for 20 minutes.'),
-    ('Choking', 'Give 5 back blows between the shoulder blades.'),
-    ('Bleeding', 'Press firmly on the wound and keep pressing.'),
-    ('Recovery', 'Put an unconscious breather on their side.'),
-  ];
-
-  static const List<(String, String)> _tipsAr = <(String, String)>[
-    ('الإنعاش', 'اضغط بقوة وسرعة: ١٠٠–١٢٠ ضغطة في الدقيقة.'),
-    ('الحروق', 'برّد الحرق بماء جارٍ لمدة ٢٠ دقيقة.'),
-    ('الاختناق', 'أعطِ ٥ ضربات على الظهر بين لوحي الكتف.'),
-    ('النزيف', 'اضغط بإحكام على الجرح واستمر في الضغط.'),
-    ('الوعي', 'ضع الفاقد للوعي الذي يتنفس على جنبه.'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final tips = isArabic ? _tipsAr : _tipsEn;
-    final dayOfYear = DateTime.now().difference(
-      DateTime(DateTime.now().year),
-    ).inDays;
-    final (topic, tip) = tips[dayOfYear % tips.length];
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.aiAccentPink.withOpacity(0.35),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.aiAccentPink),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(LucideIcons.lightbulb,
-              size: 18, color: AppColors.primaryRed),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: '$topic — ',
-                    style: GoogleFonts.inter(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primaryRed,
-                    ),
-                  ),
-                  TextSpan(
-                    text: tip,
-                    style: GoogleFonts.inter(
-                      fontSize: 12.5,
-                      color: AppColors.textDark,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
