@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
@@ -96,7 +97,10 @@ class _EducationalScreenState extends State<EducationalScreen> {
           textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
           child: Column(
             children: [
-              const TopBar(),
+              TopBar(
+              onLogoTap: () =>
+                  mainScreenKey.currentState?.switchTab(MainScreen.tabHome),
+              ),
               Expanded(
                 child: CustomScrollView(
                   slivers: [
@@ -599,6 +603,53 @@ class _LessonCard extends StatelessWidget {
 // Exposed so the AI-chat tool `show_cpr_tutorial` can navigate to it without
 // dragging the entire `_LessonDetailScreen` into public API.
 
+/// Persisted per-lesson progress (furthest step reached + completion),
+/// keyed by a stable [lessonId] so the Home card can pick it up across
+/// launches and languages.
+class LessonProgress {
+  static const String _reachedPrefix = 'lesson.reached.';
+  static const String _totalPrefix = 'lesson.total.';
+  static const String _completedPrefix = 'lesson.completed.';
+
+  static Future<void> recordStep(
+      String lessonId, int stepIndex, int stepCount) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final prev = prefs.getInt('$_reachedPrefix$lessonId') ?? 0;
+      if (stepIndex + 1 > prev) {
+        await prefs.setInt('$_reachedPrefix$lessonId', stepIndex + 1);
+      }
+      await prefs.setInt('$_totalPrefix$lessonId', stepCount);
+    } catch (_) {
+      // Progress is cosmetic; never block the lesson on storage errors.
+    }
+  }
+
+  static Future<void> markCompleted(String lessonId, int stepCount) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('$_completedPrefix$lessonId', true);
+      await prefs.setInt('$_reachedPrefix$lessonId', stepCount);
+      await prefs.setInt('$_totalPrefix$lessonId', stepCount);
+    } catch (_) {}
+  }
+
+  /// Returns (furthestStepReached, totalSteps, completed). Defaults are safe
+  /// for a never-opened lesson.
+  static Future<(int, int, bool)> load(String lessonId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return (
+        prefs.getInt('$_reachedPrefix$lessonId') ?? 0,
+        prefs.getInt('$_totalPrefix$lessonId') ?? 0,
+        prefs.getBool('$_completedPrefix$lessonId') ?? false,
+      );
+    } catch (_) {
+      return (0, 0, false);
+    }
+  }
+}
+
 class CprLessonScreen extends StatelessWidget {
   const CprLessonScreen({super.key});
 
@@ -606,6 +657,7 @@ class CprLessonScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isArabic = AppStateProvider.of(context).isArabic;
     return _LessonDetailScreen(
+      lessonId: 'cpr_basics',
       title: isArabic ? 'أساسيات الإنعاش' : 'CPR Basics',
       icon: LucideIcons.heartPulse,
       gradientColors: const [Color(0xFFCFC3B0), Color(0xFFD5CBBD)],
@@ -616,11 +668,13 @@ class CprLessonScreen extends StatelessWidget {
 // ── Lesson Detail Screen ────────────────────────────────────────────────────────
 
 class _LessonDetailScreen extends StatefulWidget {
+  final String? lessonId;
   final String title;
   final IconData icon;
   final List<Color> gradientColors;
 
   const _LessonDetailScreen({
+    this.lessonId,
     required this.title,
     required this.icon,
     required this.gradientColors,
@@ -861,6 +915,11 @@ class _LessonDetailScreenState extends State<_LessonDetailScreen> {
                         onPageChanged: (idx) {
                           setState(() => _currentIndex = idx);
                           _checkMetronome(steps);
+                          final lessonId = widget.lessonId;
+                          if (lessonId != null) {
+                            LessonProgress.recordStep(
+                                lessonId, idx, steps.length);
+                          }
                         },
                         itemCount: steps.length,
                         itemBuilder: (context, index) {
@@ -931,6 +990,11 @@ class _LessonDetailScreenState extends State<_LessonDetailScreen> {
                                   curve: Curves.easeInOut,
                                 );
                               } else {
+                                final lessonId = widget.lessonId;
+                                if (lessonId != null) {
+                                  LessonProgress.markCompleted(
+                                      lessonId, steps.length);
+                                }
                                 Navigator.pop(context);
                               }
                             },

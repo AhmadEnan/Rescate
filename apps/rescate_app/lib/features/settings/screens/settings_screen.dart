@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/providers/app_state.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -33,6 +34,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               );
             }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEmergencyNumberEditor(BuildContext context, AppState appState) {
+    final controller =
+        TextEditingController(text: appState.emergencyNumber);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.background,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        final isArabic = appState.isArabic;
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isArabic ? 'رقم الطوارئ' : 'Emergency number',
+                style: const TextStyle(
+                  color: AppColors.textDark,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                isArabic
+                    ? 'يُستخدم في زر الاتصال بالطوارئ في الشاشة الرئيسية'
+                    : 'Used by the Home SOS dial button',
+                style: TextStyle(
+                  color: AppColors.textDark.withOpacity(0.55),
+                  fontSize: 12.5,
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.allow(
+                    RegExp(r'[0-9+*#]'))],
+                decoration: const InputDecoration(
+                  hintText: '112',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    appState.setEmergencyNumber(controller.text);
+                    Navigator.pop(context);
+                  },
+                  child: Text(isArabic ? 'حفظ' : 'Save'),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -81,6 +153,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
                 activeColor: AppColors.primaryRed,
               ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(LucideIcons.phone,
+                  color: AppColors.primaryRed),
+              title: Text(isArabic ? 'رقم الطوارئ' : 'Emergency number'),
+              subtitle: Text(appState.emergencyNumber),
+              trailing: const Icon(LucideIcons.chevronRight,
+                  color: AppColors.textDark),
+              onTap: () => _showEmergencyNumberEditor(context, appState),
             ),
             const Divider(),
             ListTile(

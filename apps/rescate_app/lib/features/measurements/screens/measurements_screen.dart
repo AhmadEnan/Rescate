@@ -7,6 +7,7 @@ import 'package:offline_data/offline_data.dart';
 import 'package:biometric_estimators/biometric_estimators.dart';
 import 'package:sensor_availability/sensor_availability.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../home/screens/main_screen.dart';
 import '../../home/widgets/top_bar.dart';
 
 class MeasurementsScreen extends StatefulWidget {
@@ -81,7 +82,10 @@ class _MeasurementsScreenState extends State<MeasurementsScreen>
         bottom: false,
         child: Column(
           children: [
-            const TopBar(),
+            TopBar(
+              onLogoTap: () =>
+                  mainScreenKey.currentState?.switchTab(MainScreen.tabHome),
+              ),
             // Title row
             Padding(
               padding:

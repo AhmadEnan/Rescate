@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../home/screens/main_screen.dart';
 import '../../../core/providers/app_state.dart';
 import '../../../core/providers/demo_state.dart';
 import '../../home/widgets/top_bar.dart';
@@ -221,7 +222,10 @@ class _CommunityScreenState extends State<CommunityScreen>
           textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
           child: Column(
               children: [
-                  const TopBar(),
+                  TopBar(
+                onLogoTap: () =>
+                    mainScreenKey.currentState?.switchTab(MainScreen.tabHome),
+              ),
 
                   // ── Page title ────────────────────────────────
                   Padding(
