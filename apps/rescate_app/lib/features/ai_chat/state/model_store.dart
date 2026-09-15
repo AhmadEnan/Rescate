@@ -414,7 +414,21 @@ class ModelStore {
         rafPart.flushSync();
       } finally {
         rafPart.closeSync();
-        response.detachSocket().then((_) {}).catchError((_) {});
+        // Detach only when aborting mid-stream (cancel, or a server that
+        // closed early). The point of detaching is to stop `dart:_http` from
+        // draining a body we have deliberately abandoned — on a cancelled
+        // 400 MB download that drain is exactly what we cannot afford.
+        //
+        // A fully-consumed response has nothing left to drain, so detaching it
+        // buys nothing and costs two things: it takes a still-healthy
+        // keep-alive connection out of the pool and destroys it, and on a
+        // ranged (206) response it trips a `dart:_http` "Null check operator
+        // used on a null value" that surfaces as an *uncaught async error*
+        // rather than as a throw from this function — which fails the caller's
+        // test and would otherwise be unattributable.
+        if (totalBytes <= 0 || copied < totalBytes) {
+          response.detachSocket().then((_) {}).catchError((_) {});
+        }
       }
 
       if (copied <= _kMinPlausibleGgufBytes) {

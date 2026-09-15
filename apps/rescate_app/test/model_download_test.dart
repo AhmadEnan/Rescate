@@ -20,6 +20,11 @@ class _BlobServer {
   final Set<String> interrupted = {};
   // Per-path content-length overrides (simulates server artifact drift).
   final Map<String, int> lengthOverrides = {};
+
+  /// Status code served for each request, in request order, per path.
+  /// `200` for a full body, `206` for a ranged response.
+  final Map<String, List<int>> servedStatus = {};
+
   int chunkSize = 64 * 1024;
 
   /// Per-path byte offset at which the server stops writing and waits for
@@ -79,6 +84,12 @@ class _BlobServer {
         req.response.headers.set(HttpHeaders.contentRangeHeader,
             'bytes $start-${declaredLength - 1}/$declaredLength');
       }
+      // Record what we actually served, in request order. A resume test must
+      // assert on THIS rather than infer 206-ness from progress ticks: a fast
+      // client can receive a re-downloaded full body in a single read, which
+      // satisfies a "first tick is at least the partial" assertion without any
+      // resume having happened.
+      (servedStatus[name] ??= <int>[]).add(start > 0 ? 206 : 200);
       req.response.contentLength = declaredLength - start;
       final limit = interrupted.contains(name) ? blob.length ~/ 2 : blob.length;
       try {
@@ -142,18 +153,28 @@ class _BlobServer {
   }
 }
 
-/// `dart:_http` reports an uncaught "Null check operator used on a null value"
-/// from response-stream teardown after a large body is fully consumed
-/// (misattributed to `_HttpClient.getUrl`). Long observed on Windows under
-/// flutter_test, and now also observed on **Linux CI** (issue #34) — so the
-/// older claim here that "linux CI and Android are unaffected" no longer holds.
-///
-/// Still guarded on Windows only, because that is where it reproduces most
-/// reliably and the guard costs real coverage on the platform we ship to. The
-/// CI occurrence is worked around in the resume test by giving each attempt its
-/// own `HttpClient` and closing it deterministically, rather than by widening
-/// this guard.
-final bool flutterTestWindowsHttpNpe = Platform.isWindows;
+// NOTE: this file used to carry a `flutterTestWindowsHttpNpe` guard that
+// skipped five of these tests on Windows, because `dart:_http` reported an
+// uncaught "Null check operator used on a null value" (misattributed to
+// `_HttpClient.getUrl`) after a large body was fully consumed. That guard is
+// gone: the cause was a real product bug, not a test-harness quirk.
+//
+// `ModelStore.downloadModel` called `response.detachSocket()` in its `finally`
+// unconditionally, including for a response it had already fully read.
+// Detaching a drained response takes a healthy keep-alive connection out of the
+// pool and destroys it, and on a ranged (206) response it trips the NPE above.
+// Because that surfaces as an *uncaught async error*, it is attributed to
+// whatever runs next — which is why it looked like it came from a later
+// `_HttpClient.getUrl`, and why it could not be caught by wrapping a test body
+// in `try`/`catch`.
+//
+// `detachSocket()` is now called only when the body was abandoned mid-stream
+// (cancel, or a server that closed early), which is the case it exists for.
+// The guard was deleted rather than narrowed so these five tests run on Windows
+// again; every one of them fails with the NPE if that condition is reverted, so
+// they are genuine regression coverage for the fix.
+//
+// Tracked in issue #34.
 
 Uint8List _ggufBlob(int size) {
   final b = Uint8List(size);
@@ -197,7 +218,6 @@ void main() {
 
   group('downloadModel (against a real local HTTP server)', () {
     test('happy path: streams, hashes, atomically promotes',
-        skip: flutterTestWindowsHttpNpe,
         () async {
       final blob = ggufBlob(1024 * 1024); // 1 MB — above min-plausible
       server.blobs['model.gguf'] = blob;
@@ -228,7 +248,6 @@ void main() {
     }, timeout: const Timeout(Duration(minutes: 2)));
 
     test('checksum mismatch: rejected, part removed, nothing promoted',
-        skip: flutterTestWindowsHttpNpe,
         () async {
       final blob = ggufBlob(1024 * 1024);
       server.blobs['corrupt.gguf'] = blob;
@@ -271,53 +290,48 @@ void main() {
     }, timeout: const Timeout(Duration(minutes: 2)));
 
     test('resume: retry continues from the kept partial via HTTP 206',
-        skip: flutterTestWindowsHttpNpe,
         () async {
       final blob = ggufBlob(8 * 1024 * 1024);
       server.blobs['resume.gguf'] = blob;
-      server.interrupted.add('resume.gguf');
       final url = Uri.parse('$baseUrl/resume.gguf');
       final s = store();
 
-      // Each attempt gets its own explicitly-closed client. The first attempt
-      // ends by detaching the socket of a truncated body; retrying on that
-      // same HttpClient is what trips a `dart:_http` "Null check operator used
-      // on a null value" inside `_HttpClient.getUrl` on CI (issue #34), even
-      // though `downloadModel` would otherwise allocate a fresh client.
-      final firstAttempt = HttpClient();
-      try {
-        // First attempt: torn at 50%, partial kept.
-        await expectLater(
-          s.downloadModel(url, 'resume.gguf', client: firstAttempt),
-          throwsA(isA<ModelImportException>()),
-        );
-      } finally {
-        firstAttempt.close(force: true);
-      }
-      final partialLen =
-          File('${sandbox.path}/resume.gguf.part').lengthSync();
+      // Seed the kept partial directly instead of producing it with a first,
+      // torn download.
+      //
+      // The "a torn download keeps its partial" half is already covered by the
+      // preceding `server interruption mid-stream` test, so nothing is lost by
+      // not repeating it here. One request also keeps the failure attribution
+      // clean: the NPE this test used to hit (issue #34) surfaced as an
+      // uncaught async error from the *previous* response's teardown and was
+      // reported against the next `getUrl`, so a two-request test points the
+      // blame at the wrong request. The product bug behind it is fixed in
+      // `ModelStore.downloadModel`; see the note near the top of this file.
+      final partFile = File('${sandbox.path}/resume.gguf.part');
+      await partFile.parent.create(recursive: true);
+      final kept = blob.sublist(0, blob.length ~/ 2);
+      await partFile.writeAsBytes(kept, flush: true);
 
-      // Second attempt: server now serves the whole artifact.
-      server.interrupted.remove('resume.gguf');
+      // The server serves the whole artifact, so a resume must come back as
+      // 206 for the tail. If it answered 200 instead, `downloadModel` drains
+      // and restarts, and the first progress tick would be ~one chunk.
       final progressFirstCopied = <int>[];
-      final secondAttempt = HttpClient();
-      late final ImportedModel model;
-      try {
-        model = await s.downloadModel(
-          url,
-          'resume.gguf',
-          client: secondAttempt,
-          onProgress: (copied, total) {
-            progressFirstCopied.add(copied);
-            return true;
-          },
-        );
-      } finally {
-        secondAttempt.close(force: true);
-      }
+      final model = await s.downloadModel(
+        url,
+        'resume.gguf',
+        onProgress: (copied, total) {
+          progressFirstCopied.add(copied);
+          return true;
+        },
+      );
 
       expect(model.sizeBytes, blob.length);
-      expect(progressFirstCopied.first, greaterThanOrEqualTo(partialLen),
+      // The decisive assertion: exactly one request, and it was ranged. A
+      // 200 would mean the server ignored the Range header and the artifact
+      // was re-downloaded from scratch — not a resume at all.
+      expect(server.servedStatus['resume.gguf'], <int>[206],
+          reason: 'a resume must be a single ranged request');
+      expect(progressFirstCopied.first, greaterThanOrEqualTo(kept.length),
           reason: 'first progress tick must be at-or-after the kept partial — '
               'a restart would report ~one chunk');
       expect(progressFirstCopied.last, blob.length);
@@ -390,7 +404,6 @@ void main() {
     });
 
     test('duplicate name: refuses to overwrite an existing model',
-        skip: flutterTestWindowsHttpNpe,
         () async {
       final blob = ggufBlob(1024 * 1024);
       server.blobs['dupe.gguf'] = blob;
@@ -427,7 +440,6 @@ void main() {
     });
 
     test('content-length matching expectedBytes proceeds normally',
-        skip: flutterTestWindowsHttpNpe,
         () async {
       final blob = ggufBlob(1024 * 1024);
       server.blobs['match.gguf'] = blob;
