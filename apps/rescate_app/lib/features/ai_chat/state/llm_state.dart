@@ -266,21 +266,49 @@ class LlmState extends ChangeNotifier {
       // rag_v3: load sentence/vector assets (cheap) and, if the embedder GGUF
       // is already on disk, load it + register anchor vectors. If the embedder
       // is absent, LlmService transparently uses LegacyRag until it arrives.
-      unawaited(
-        Profiler.span('chat.ragV3Init', () async {
-          await RagService.instance.loadAssets();
-          final modelsDir = await ModelStore.instance.modelsDirectory();
-          final embedderPath = EmbedderService.embedderPath(modelsDir.path);
-          if (File(embedderPath).existsSync()) {
-            await EmbedderService.instance.load(embedderPath);
-          } else {
-            debugPrint('[LlmState] embedder GGUF not present; LegacyRag active');
-          }
-        }),
-      );
+      unawaited(Profiler.span('chat.ragV3Init', activateEmbedderIfPresent));
       await Profiler.span('chat.autoLoadModel', () => svc.loadModel(path));
     } catch (e) {
       debugPrint('[LlmState] tryAutoLoadModel failed: $e');
+    }
+  }
+
+  /// Loads the embedder GGUF from the sandbox if it is present and not already
+  /// loaded, so rag_v3 replaces LegacyRag. Idempotent, never throws.
+  ///
+  /// Called from two places:
+  ///  * [tryAutoLoadModel] at startup, and
+  ///  * the model-setup screen, right after an in-app embedder download.
+  ///
+  /// The second caller is why this is a method rather than an inline block.
+  /// The download path goes through `LlmService.loadModel`, which never touches
+  /// the embedder, so before this was extracted a freshly downloaded embedder
+  /// sat unused on disk and the app kept answering with LegacyRag until the
+  /// *next* app launch — silently, with no user-visible difference.
+  ///
+  /// Returns true when the embedder is ready afterwards.
+  Future<bool> activateEmbedderIfPresent() async {
+    if (EmbedderService.instance.isReady) return true;
+    try {
+      // Order matters: anchors are registered onto RagService's triage
+      // instance, so the assets must be loaded before the embedder registers
+      // them (idempotent, so calling it again here is free).
+      await RagService.instance.loadAssets();
+      final modelsDir = await ModelStore.instance.modelsDirectory();
+      final embedderPath = EmbedderService.embedderPath(modelsDir.path);
+      if (!File(embedderPath).existsSync()) {
+        debugPrint('[LlmState] embedder GGUF not present; LegacyRag active');
+        return false;
+      }
+      await EmbedderService.instance.load(embedderPath);
+      final ok = EmbedderService.instance.isReady;
+      debugPrint(
+        '[LlmState] embedder activation: ${ok ? 'rag_v3 active' : 'load failed, LegacyRag active'}',
+      );
+      return ok;
+    } catch (e) {
+      debugPrint('[LlmState] embedder activation failed: $e');
+      return false;
     }
   }
 

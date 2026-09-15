@@ -11,6 +11,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../state/llm_state.dart';
 import '../state/model_store.dart';
 
 const String _kPrefsModelPathKey = 'ai_chat.model_path';
@@ -37,6 +38,11 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
   // per-known-model-id download state ('chat' | 'embedder')
   final Map<String, double> _downloadProgress = {};
   final Set<String> _downloading = {};
+
+  /// Whether the retrieval (embedder) GGUF is loaded and driving rag_v3.
+  /// Mirrors [EmbedderService.isReady]; refreshed after a download/import and
+  /// on entry, so the UI can state which retriever is actually live.
+  bool _embedderActive = false;
 
   LlmStatus get _status => LlmService.instance.status;
 
@@ -91,6 +97,8 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
       _storedModels = models;
       _importedModel = selected;
       _migratablePath = migratable;
+      // Reflect what is actually loaded, not what is merely on disk.
+      _embedderActive = EmbedderService.instance.isReady;
     });
   }
 
@@ -155,6 +163,26 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
         _migratablePath = null;
         _errorMessage = null;
       });
+
+      // Importing the retrieval model must activate it too - same reasoning as
+      // the download path above. There is no "Use" button for the embedder,
+      // so without this an imported embedder would never load this session.
+      if (model.fileName == kEmbedderModel.fileName) {
+        final active = await LlmState.instance.activateEmbedderIfPresent();
+        if (mounted) {
+          setState(() => _embedderActive = active);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                active
+                    ? 'Retrieval model active — smart search is on.'
+                    : 'Imported, but the retrieval model did not load. '
+                        'Restart the app to activate it.',
+              ),
+            ),
+          );
+        }
+      }
     } on ModelImportException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -395,6 +423,26 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
           _isLoading = true;
         });
         await _loadModel();
+      } else if (model.id == 'embedder') {
+        // Activate the retrieval model immediately. The chat-model branch
+        // above goes through LlmService.loadModel, which never touches the
+        // embedder, so without this an embedder downloaded *after* the chat
+        // model has no effect until the next app launch - and the app keeps
+        // answering from the legacy lexical retriever with no visible sign.
+        final active = await LlmState.instance.activateEmbedderIfPresent();
+        if (mounted) {
+          setState(() => _embedderActive = active);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                active
+                    ? 'Retrieval model active — smart search is on.'
+                    : 'Downloaded, but the retrieval model did not load. '
+                        'Restart the app to activate it.',
+              ),
+            ),
+          );
+        }
       }
     } on ModelImportException catch (e) {
       if (mounted && e.message != 'cancelled') {
@@ -419,6 +467,11 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
     final stored = _storedModels.any((m) => m.fileName == model.fileName);
     return stored;
   }
+
+  /// Identifies the retrieval-model row. Keyed on the filename because that is
+  /// the contract [EmbedderService.embedderPath] resolves against.
+  bool _isEmbedderRow(KnownModel model) =>
+      model.fileName == kEmbedderModel.fileName;
 
   Widget _buildKnownModelsDownloads() {
     return Column(
@@ -452,7 +505,14 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
               Icon(
                 stored ? LucideIcons.checkCircle2 : LucideIcons.downloadCloud,
                 size: 18,
-                color: stored ? Colors.green : AppColors.primaryRed,
+                // The embedder being on disk is not the same as it being in
+                // use, so only show the "good" state when it is actually
+                // driving rag_v3.
+                color: !stored
+                    ? AppColors.primaryRed
+                    : _isEmbedderRow(model) && !_embedderActive
+                        ? Colors.orange
+                        : Colors.green,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -467,7 +527,12 @@ class _ModelSetupScreenState extends State<ModelSetupScreen> {
               ),
               Text(
                 stored
-                    ? 'on device'
+                    ? (_isEmbedderRow(model) && !_embedderActive
+                        // A stored-but-unloaded embedder is the silent case:
+                        // the app answers from the legacy lexical retriever
+                        // and nothing else in the UI says so.
+                        ? 'on device — not active'
+                        : 'on device')
                     : downloading
                         ? '${((progress ?? 0) * 100).toStringAsFixed(0)}%'
                         : model.sizeLabel,
