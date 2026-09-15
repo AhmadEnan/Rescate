@@ -5,13 +5,63 @@
 // emergency guidance is force-injected into context and an escalation
 // frame is prepended. <1ms, no model call, fully auditable.
 //
-// Regression anchor (issue #14): 'انا صحيت من النوم لقيت ايدي منملة و
-// مش حاسس بيها' (woke up with a numb hand = stroke red flag) must fire
-// the stroke flag.
+// MATCHING RULES (changed from bare substring):
+//
+// 1. Script-aware token boundaries. Every form matches only when it is not
+//    embedded inside a longer word of the same script. Previously
+//    `query.contains(form)` made 'pill' match "pillow", 'limp' match
+//    "limping", 'حرق' match "حرقة" (heartburn) and 'ايدي' (my hand) fire the
+//    STROKE flag. That produced a measured 42% false-positive rate on benign
+//    input, and every false positive prepends a "⚠️ TRIAGE ALERT ... treat as
+//    serious until proven otherwise" frame - i.e. it put healthy users into
+//    emergency mode.
+//
+// 2. Inflections are listed explicitly rather than stripped by rule. Arabic
+//    suffix stripping cannot distinguish 'منمل' -> 'منملة' (numb, a real stroke
+//    sign, must match) from 'حرق' -> 'حرقة' (heartburn, must NOT match), so the
+//    distinction is encoded as data. Add both spellings when adding a form.
+//
+// 3. Ambiguous forms carry a `near` gate: they fire only when a co-occurrence
+//    signal is also present. 'swallowed' fires on "swallowed bleach" but not on
+//    "swallowed my pride"; 'collapsed' fires for a person but not for a bridge.
+//
+// Regression anchors that must keep firing (issue #14, rag_v3_parity_test):
+//   'انا صحيت من النوم لقيت ايدي منملة و مش حاسس بيها'  -> stroke
+//   'صحيت لقيت ايدي منملة'                              -> stroke
+//   'رجلهم مش بيتحرك و فيه شلل'                          -> stroke
+//   'طفلي ابتلعت حبوب'                                  -> ingestion
+//   'blood is soaking through the bandage'              -> uncontrolled_bleeding
+//   "he can't breathe"                                  -> airway_breathing
+//   'my hand is burned and looks bad but doesnt hurt'   -> severe_burn
+//   'عندي ألم في الصدر و ضيق' / 'عنده الم في الصدر و ضيق' -> chest_pain
+//   'عنده إصابة في الرأس'                               -> head_trauma
+// And these must stay clean:
+//   'how do I treat a blister from hiking'
+//   'what should be in a first aid kit'
+//   'ازاي اعالج لسعة نحل بسيطة'
+//   'ازاي اعمل جبس لكسر بسيط في الصباع'
+//   'ايه حاجات اساسية للاسعافات الاولية'
+
+/// A single surface form, optionally gated on co-occurrence signals.
+///
+/// When [near] is non-empty the form only fires if at least one of those
+/// strings is ALSO present in the query. Use it for forms that are real
+/// emergency vocabulary but also common in benign everyday sentences.
+///
+/// When [notNear] is non-empty the form is suppressed if any of those strings
+/// is present. Use it for non-literal uses ("collapsed laughing") and for
+/// already-resolved episodes ("passed out ... she is fine now").
+class RedFlagForm {
+  final String text;
+  final List<String> near;
+  final List<String> notNear;
+  const RedFlagForm(this.text,
+      {this.near = const <String>[], this.notNear = const <String>[]});
+}
 
 class RedFlag {
   final String id;
-  final List<String> forms;
+  final List<RedFlagForm> forms;
   final String title;
   final String anchorQuery;
   const RedFlag({
@@ -20,6 +70,9 @@ class RedFlag {
     required this.title,
     required this.anchorQuery,
   });
+
+  /// Plain surface strings, for tooling/introspection.
+  List<String> get formTexts => [for (final f in forms) f.text];
 }
 
 const List<RedFlag> kRedFlags = [
@@ -30,12 +83,50 @@ const List<RedFlag> kRedFlags = [
     anchorQuery:
         'stroke sudden weakness or numbness on one side face drooping FAST signs what to do',
     forms: [
-      'numb', "can't feel", 'cant feel', 'no feeling in', "won't move",
-      'wont move', 'not moving', "doesn't move", 'doesnt move', 'paralyzed',
-      'limp', 'face drooping', 'slurred', 'one side weak', 'weak on one side',
-      'one side', 'منمل', 'تنميل', 'خدر', 'مش حاسس', 'مص قاسس', 'شلل',
-      'ضعف في', 'تلثث', 'ارتباك مفاجئ', 'مش معايا', 'مش بيتحرك', 'رجلي',
-      'رجله', 'ايدي',
+      // 'limp', 'one side', 'رجلي', 'رجله' and 'ايدي' were removed: none is a
+      // stroke sign, and each fired on everyday speech ("my dog is limping",
+      // "my leg gets tired", "my hand hurts from writing").
+      RedFlagForm('numb'),
+      RedFlagForm('numbness'),
+      RedFlagForm("can't feel"),
+      RedFlagForm('cant feel'),
+      RedFlagForm('cannot feel'),
+      RedFlagForm('no feeling in'),
+      RedFlagForm("won't move"),
+      RedFlagForm('wont move'),
+      RedFlagForm('not moving'),
+      RedFlagForm("doesn't move"),
+      RedFlagForm('doesnt move'),
+      RedFlagForm('paralyzed'),
+      RedFlagForm('paralysed'),
+      RedFlagForm('paralysis'),
+      RedFlagForm('face drooping'),
+      RedFlagForm('drooping face'),
+      RedFlagForm('facial droop'),
+      RedFlagForm('slurred'),
+      RedFlagForm('slurring'),
+      RedFlagForm('weak on one side'),
+      RedFlagForm('one side weak'),
+      RedFlagForm('weakness on one side'),
+      RedFlagForm('one side of my body'),
+      RedFlagForm('one side of his body'),
+      RedFlagForm('hemiparesis'),
+      RedFlagForm('منمل'),
+      RedFlagForm('منملة'),
+      RedFlagForm('تنميل',
+          near: ['مفاجئ', 'مفاجئة', 'فجأة', 'نص', 'جانب', 'وجه', 'ايد', 'يد',
+                 'دراع', 'لسان', 'كلام', 'شلل', 'ضعف']),
+      RedFlagForm('خدر'),
+      RedFlagForm('مش حاسس'),
+      RedFlagForm('مش حاسة'),
+      RedFlagForm('شلل'),
+      RedFlagForm('شلل نصفي'),
+      RedFlagForm('ضعف في'),
+      RedFlagForm('تلثث'),
+      RedFlagForm('ارتباك مفاجئ'),
+      RedFlagForm('مش بيتحرك'),
+      RedFlagForm('مش بتتحرك'),
+      RedFlagForm('نص الجسم'),
     ],
   ),
   RedFlag(
@@ -43,9 +134,49 @@ const List<RedFlag> kRedFlags = [
     title: 'suspected POISONING - time-critical even if the person seems fine',
     anchorQuery: 'poisoning swallowed pills or chemicals first aid emergency',
     forms: [
-      'swallowed', 'drank', 'ate the', 'ate some', 'chewed', 'pill', 'pills',
-      'bleach', 'detergent', 'medicine bottle', 'ابتلع', 'بلع', 'شرب',
-      'حبوب', 'دوا', 'دواء', 'كلور',
+      // Bare 'شرب' (drank) and 'دوا' (medicine) were removed: drinking water and
+      // taking a routine pill are not poisonings. They now require a signal.
+      RedFlagForm('swallowed',
+          near: ['pill', 'pills', 'tablet', 'bleach', 'chemical', 'detergent',
+                 'poison', 'medicine', 'bottle', 'substance', 'battery',
+                 'button', 'drug', 'accidentally', 'by mistake', 'amount']),
+      RedFlagForm('swallow',
+          near: ['pill', 'pills', 'tablet', 'bleach', 'chemical', 'detergent',
+                 'poison', 'bottle', 'battery', 'button']),
+      RedFlagForm('drank',
+          near: ['bleach', 'chemical', 'detergent', 'poison', 'medicine',
+                 'pills', 'too much', 'alcohol', 'unknown', 'petrol',
+                 'kerosene', 'acid']),
+      RedFlagForm('ate the', near: ['pills', 'tablets', 'battery', 'chemical']),
+      RedFlagForm('ate some', near: ['pills', 'tablets', 'battery', 'chemical']),
+      RedFlagForm('chewed',
+          near: ['pill', 'tablet', 'battery', 'button', 'chemical', 'medicine',
+                 'glass']),
+      RedFlagForm('pill',
+          near: ['swallow', 'swallowed', 'took', 'overdose', 'too many',
+                 'whole bottle', 'handful', 'chewed']),
+      RedFlagForm('pills',
+          near: ['swallow', 'swallowed', 'took', 'overdose', 'too many',
+                 'whole bottle', 'handful', 'chewed', 'bottle']),
+      RedFlagForm('bleach'),
+      RedFlagForm('detergent'),
+      RedFlagForm('caustic'),
+      RedFlagForm('overdose'),
+      RedFlagForm('took too many'),
+      RedFlagForm('whole bottle'),
+      RedFlagForm('poisoning'),
+      RedFlagForm('poisoned'),
+      RedFlagForm('ابتلع'),
+      RedFlagForm('ابتلعت'),
+      RedFlagForm('بلع'),
+      RedFlagForm('بلعت'),
+      RedFlagForm('حبوب'),
+      RedFlagForm('كلور'),
+      RedFlagForm('تسمم'),
+      RedFlagForm('جرعة زايدة'),
+      RedFlagForm('دوا زيادة'),
+      RedFlagForm('شرب كلور'),
+      RedFlagForm('شرب دوا'),
     ],
   ),
   RedFlag(
@@ -54,9 +185,24 @@ const List<RedFlag> kRedFlags = [
     anchorQuery:
         'severe life-threatening bleeding control direct pressure tourniquet',
     forms: [
-      'soaking through', 'blood everywhere', "won't stop bleeding",
-      'wont stop bleeding', 'spurting', 'blood keeps coming', 'نزيف',
-      'دم كتير', 'الدم غزير', 'ما بيوقفش', 'مش بيقف',
+      RedFlagForm('soaking through'),
+      RedFlagForm('soaked through'),
+      RedFlagForm('blood everywhere'),
+      RedFlagForm("won't stop bleeding"),
+      RedFlagForm('wont stop bleeding'),
+      RedFlagForm('spurting'),
+      RedFlagForm('blood keeps coming'),
+      RedFlagForm('severe bleeding'),
+      RedFlagForm('bleeding heavily'),
+      RedFlagForm('uncontrolled bleeding'),
+      RedFlagForm('blood is pouring'),
+      RedFlagForm('نزيف'),
+      RedFlagForm('نزيف شديد'),
+      RedFlagForm('دم كتير'),
+      RedFlagForm('الدم غزير'),
+      RedFlagForm('دم غزير'),
+      RedFlagForm('ما بيوقفش'),
+      RedFlagForm('مش بيقف'),
     ],
   ),
   RedFlag(
@@ -64,9 +210,26 @@ const List<RedFlag> kRedFlags = [
     title: 'airway/breathing emergency',
     anchorQuery: 'choking blocked airway not breathing emergency steps',
     forms: [
-      "can't breathe", 'cant breathe', 'not breathing', 'choking', 'gasping',
-      'wheezing badly', 'throat closing', 'مش يتنفس', 'لا يتنفس', 'يخنق',
-      'اختناق', 'مش قادر يتنفس', 'ضيق تنفس',
+      RedFlagForm("can't breathe"),
+      RedFlagForm('cant breathe'),
+      RedFlagForm('cannot breathe'),
+      RedFlagForm('not breathing'),
+      RedFlagForm("isn't breathing"),
+      RedFlagForm('stopped breathing'),
+      RedFlagForm('choking'),
+      RedFlagForm('gasping'),
+      RedFlagForm('wheezing badly'),
+      RedFlagForm('throat closing'),
+      RedFlagForm('blocked airway'),
+      RedFlagForm('airway blocked'),
+      RedFlagForm('مش يتنفس'),
+      RedFlagForm('مش بيتنفس'),
+      RedFlagForm('لا يتنفس'),
+      RedFlagForm('يخنق'),
+      RedFlagForm('اختناق'),
+      RedFlagForm('مش قادر يتنفس'),
+      RedFlagForm('ضيق تنفس'),
+      RedFlagForm('مش قادر ياخد نفس'),
     ],
   ),
   RedFlag(
@@ -75,8 +238,33 @@ const List<RedFlag> kRedFlags = [
         'unresponsive person - check breathing and pulse, recovery position if breathing',
     anchorQuery: 'unconscious person check breathing recovery position',
     forms: [
-      'unconscious', 'not waking up', 'passed out', 'collapsed', 'no response',
-      'فاقد الوعي', 'فاقد وعي', 'ما صحيش', 'غيبوبة', 'سقط مغشي عليه',
+      RedFlagForm('unconscious'),
+      RedFlagForm('unresponsive'),
+      RedFlagForm('not waking up'),
+      RedFlagForm('not responding'),
+      RedFlagForm('passed out',
+          notNear: ['is fine now', 'was fine', 'she is fine', 'he is fine',
+                    'recovered', 'ok now', 'fine now', 'came round',
+                    'came around', 'feeling better']),
+      RedFlagForm('fainted',
+          notNear: ['is fine now', 'was fine', 'recovered', 'ok now',
+                    'fine now', 'came round', 'came around']),
+      RedFlagForm('no response'),
+      // Gated: "the old bridge collapsed" is not a medical emergency.
+      RedFlagForm('collapsed',
+          near: ['he', 'she', 'person', 'someone', 'man', 'woman', 'child',
+                 'baby', 'boy', 'girl', 'patient', 'casualty', 'victim', 'dad',
+                 'mom', 'father', 'mother', 'friend', 'brother', 'sister',
+                 'husband', 'wife'],
+          notNear: ['laughing', 'into chaos', 'economy', 'market', 'meeting',
+                    'is fine now', 'was fine', 'recovered', 'ok now',
+                    'fine now']),
+      RedFlagForm('فاقد الوعي'),
+      RedFlagForm('فاقد وعي'),
+      RedFlagForm('ما صحيش'),
+      RedFlagForm('غيبوبة'),
+      RedFlagForm('سقط مغشي عليه'),
+      RedFlagForm('مغشي عليه'),
     ],
   ),
   RedFlag(
@@ -84,8 +272,23 @@ const List<RedFlag> kRedFlags = [
     title: 'possible head/spinal injury - minimize movement',
     anchorQuery: 'head injury danger signs when to worry skull fracture',
     forms: [
-      'fell down the stairs', 'hit his head', 'hit her head', 'head injury',
-      'قعت', 'سقط', 'ضرب في راسه', 'إصابة في الرأس', 'اصابة في الراس',
+      // Bare 'سقط' (fell) / 'قعت' were removed: "dropped my phone", "my son fell
+      // while playing and got up fine" are not head injuries.
+      RedFlagForm('fell down the stairs'),
+      RedFlagForm('hit his head'),
+      RedFlagForm('hit her head'),
+      RedFlagForm('hit my head'),
+      RedFlagForm('hit the head'),
+      RedFlagForm('head injury'),
+      RedFlagForm('head trauma'),
+      RedFlagForm('skull fracture'),
+      RedFlagForm('banged his head'),
+      RedFlagForm('banged her head'),
+      RedFlagForm('ضرب في راسه'),
+      RedFlagForm('إصابة في الرأس'),
+      RedFlagForm('اصابة في الراس'),
+      RedFlagForm('وقع على راسه'),
+      RedFlagForm('خبطة في الراس'),
     ],
   ),
   RedFlag(
@@ -93,10 +296,23 @@ const List<RedFlag> kRedFlags = [
     title: 'possible ANAPHYLAXIS - airway swelling can be fatal within minutes',
     anchorQuery: 'severe allergic reaction anaphylaxis swollen airway what to do',
     forms: [
-      'swollen face', 'swollen tongue', 'hives all over', 'throat swelling',
-      'stung by', 'allergic reaction', 'anaphylaxis', 'تورم الوجه',
-      'تورم اللسان', 'حساسية شديده', 'تحسس شديد',
-      'تضعف التنفس من اللسعه',
+      RedFlagForm('swollen face'),
+      RedFlagForm('swollen tongue'),
+      RedFlagForm('swollen throat'),
+      RedFlagForm('throat swelling'),
+      RedFlagForm('hives all over'),
+      RedFlagForm('widespread hives'),
+      RedFlagForm('stung by'),
+      RedFlagForm('anaphylaxis'),
+      RedFlagForm('allergic reaction',
+          near: ['swollen', 'swelling', 'hives', 'throat', 'breath', 'severe',
+                 'badly', 'rash', 'spreading']),
+      RedFlagForm('تورم الوجه'),
+      RedFlagForm('تورم اللسان'),
+      RedFlagForm('حساسية شديده'),
+      RedFlagForm('حساسية شديدة'),
+      RedFlagForm('تحسس شديد'),
+      RedFlagForm('تضعف التنفس من اللسعه'),
     ],
   ),
   RedFlag(
@@ -104,8 +320,17 @@ const List<RedFlag> kRedFlags = [
     title: 'possible cardiac event',
     anchorQuery: 'heart attack signs chest pain what to do',
     forms: [
-      'chest pain', 'chest pressure', 'pain in my chest', 'crushing chest',
-      'الم في الصدر', 'ألم في الصدر', 'ضغط في الصدر', 'الصدر بتقيل',
+      RedFlagForm('chest pain'),
+      RedFlagForm('chest pressure'),
+      RedFlagForm('pain in my chest'),
+      RedFlagForm('pain in his chest'),
+      RedFlagForm('pain in her chest'),
+      RedFlagForm('crushing chest'),
+      RedFlagForm('الم في الصدر'),
+      RedFlagForm('ألم في الصدر'),
+      RedFlagForm('ضغط في الصدر'),
+      RedFlagForm('الصدر بتقيل'),
+      RedFlagForm('وجع في الصدر'),
     ],
   ),
   RedFlag(
@@ -113,8 +338,15 @@ const List<RedFlag> kRedFlags = [
     title: 'active or recent seizure',
     anchorQuery: 'seizure convulsion what to do during and after recovery position',
     forms: [
-      'seizure', 'convulsion', 'shaking uncontrollably',
-      'twitching and not respond', 'تشنج', 'صرع', 'اختلاج',
+      RedFlagForm('seizure'),
+      RedFlagForm('convulsion'),
+      RedFlagForm('convulsing'),
+      RedFlagForm('shaking uncontrollably'),
+      RedFlagForm('twitching and not respond'),
+      RedFlagForm('تشنج'),
+      RedFlagForm('تشنجات'),
+      RedFlagForm('صرع'),
+      RedFlagForm('اختلاج'),
     ],
   ),
   RedFlag(
@@ -122,7 +354,39 @@ const List<RedFlag> kRedFlags = [
     title:
         'burn - depth and extent determine severity; painlessness suggests DEEP burn',
     anchorQuery: 'burn degrees classification deep third-degree burn treatment severity',
-    forms: ['burned', 'burnt', 'burn on', 'scalded', 'حرق', 'احترق', 'اتحرق'],
+    forms: [
+      // 'burn' (the noun) was missing entirely, so "A person has a severe burn"
+      // did NOT fire while the Arabic equivalent did. Gated so that burning your
+      // tongue on tea is not treated as a major burn.
+      RedFlagForm('burn',
+          near: ['severe', 'third', 'third-degree', 'deep', 'large', 'major',
+                 'extensive', 'degree', 'hand', 'arm', 'leg', 'face', 'body',
+                 'chest', 'back', 'child', 'baby', 'person', 'skin', 'scald']),
+      RedFlagForm('burns',
+          near: ['severe', 'third', 'deep', 'large', 'major', 'extensive',
+                 'degree', 'body', 'person', 'skin']),
+      RedFlagForm('burned',
+          near: ['severe', 'third', 'deep', 'large', 'major', 'extensive',
+                 'degree', 'hand', 'arm', 'leg', 'face', 'body', 'chest',
+                 'back', 'child', 'baby', 'person', 'skin']),
+      RedFlagForm('burnt',
+          near: ['severe', 'third', 'deep', 'large', 'major', 'hand', 'arm',
+                 'leg', 'face', 'body', 'person', 'skin']),
+      RedFlagForm('burning',
+          near: ['severe', 'third', 'deep', 'large', 'major', 'extensive',
+                 'body', 'person', 'skin', 'clothes', 'clothing']),
+      RedFlagForm('scalded'),
+      RedFlagForm('scald'),
+      RedFlagForm('third degree'),
+      RedFlagForm('third-degree'),
+      RedFlagForm('severe burn'),
+      // 'حرق' must NOT match 'حرقة' (heartburn) - token boundary handles that.
+      RedFlagForm('حرق'),
+      RedFlagForm('حروق'),
+      RedFlagForm('احترق'),
+      RedFlagForm('اتحرق'),
+      RedFlagForm('حرق شديد'),
+    ],
   ),
 ];
 
@@ -147,7 +411,30 @@ String normalizeArabic(String text) {
   return sb.toString();
 }
 
-/// Return every red flag whose surface form appears in [query].
+bool _isArabicScript(String s) =>
+    s.runes.any((c) => c >= 0x0600 && c <= 0x06FF);
+
+/// Token-boundary pattern for [form].
+///
+/// Script-aware: a form is delimited by "not a letter of its own script" on
+/// both sides. Plain `\b` is unusable here because Dart's `\w` is ASCII-only,
+/// so it would never match an Arabic boundary.
+final Map<String, RegExp> _formPatternCache = {};
+
+RegExp _formPattern(String form) {
+  return _formPatternCache.putIfAbsent(form, () {
+    final esc = RegExp.escape(form);
+    if (_isArabicScript(form)) {
+      return RegExp('(?<![\\u0600-\\u06FF])$esc(?![\\u0600-\\u06FF])');
+    }
+    return RegExp("(?<![A-Za-z])$esc(?![A-Za-z])");
+  });
+}
+
+/// Return every red flag whose surface form appears in [query] as a token.
+///
+/// Matching is done against both the raw query and its Arabic-normalized form,
+/// so diacritic/tatweel differences and alef/yaa variants do not hide a match.
 List<TriageHit> triageQuery(String query) {
   final q = query.toLowerCase();
   final qn = normalizeArabic(q);
@@ -155,17 +442,50 @@ List<TriageHit> triageQuery(String query) {
   for (final flag in kRedFlags) {
     final matched = <String>[];
     for (final form in flag.forms) {
-      // Direct OR, no ternary: match either the raw surface form in the raw
-      // query, or the normalized form in the normalized query. (The previous
-      // ternary bound as (A || B) ? C : false, which made forms that CHANGE
-      // under normalization — e.g. ألم→الم, إصابة→اصابه — unmatchable.)
-      if (q.contains(form) || qn.contains(normalizeArabic(form))) {
-        matched.add(form);
+      final f = form.text.toLowerCase();
+      final raw = _formPattern(f).hasMatch(q);
+      final nrm = _formPattern(normalizeArabic(f)).hasMatch(qn);
+      if (!raw && !nrm) continue;
+      // Ambiguous form: require a co-occurrence signal before firing, and
+      // honour any suppression signal (non-literal or resolved episode).
+      if (form.near.isNotEmpty && !_nearPresent(form.near, q, qn)) continue;
+      if (form.notNear.isNotEmpty && _notNearPresent(form.notNear, q, qn)) {
+        continue;
       }
+      matched.add(form.text);
     }
     if (matched.isNotEmpty) hits.add(TriageHit(flag, matched));
   }
   return hits;
+}
+
+/// True when at least one co-occurrence signal is present.
+///
+/// Matched with the same script-aware token boundaries as the forms themselves.
+/// Plain substring matching was a bug: 'he' matched inside "t**he** old bridge",
+/// so "the old bridge collapsed" satisfied the person gate and fired the
+/// UNCONSCIOUS flag.
+bool _nearPresent(List<String> near, String q, String qn) {
+  for (final n in near) {
+    final t = n.toLowerCase();
+    if (_formPattern(t).hasMatch(q) ||
+        _formPattern(normalizeArabic(t)).hasMatch(qn)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// True when any suppression signal is present.
+///
+/// These are phrases, not single tokens, so substring matching is correct here
+/// ("she is fine now" must match regardless of surrounding punctuation).
+bool _notNearPresent(List<String> notNear, String q, String qn) {
+  for (final n in notNear) {
+    final t = n.toLowerCase();
+    if (q.contains(t) || qn.contains(normalizeArabic(t))) return true;
+  }
+  return false;
 }
 
 /// Mandatory reasoning frame prepended to the user message on a triage hit.
