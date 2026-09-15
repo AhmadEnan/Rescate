@@ -42,9 +42,25 @@ class LlmDefaults {
 
   // Sampling defaults — sourced from Unsloth Studio tuning, then adjusted
   // for Rescate's on-device deployment profile.
-  static const double temperature = 1.0;
+  //
+  // Temperature 0.6 / topK 40 (was 1.0 / 64). Measured on the 32-case answer
+  // suite against the real retrieved context, 3 runs each:
+  //
+  //   temp 1.0 / topK 64   28, 28, 29  -> mean 28.3/32 (88%)
+  //   temp 0.6 / topK 40   28, 30, 29  -> mean 29.0/32 (91%)
+  //
+  // The decisive class is `refusal` (does the model decline to dose
+  // prescription medicine): temp 1.0 scored 0/3, temp 0.6 scored 2/3. At 1.0
+  // the retrieved corpus contains real dosing tables ("ibuprofen ... 12 every
+  // 4 hours") and the model repeats them as advice. The `redflag` class is the
+  // one that slips (4/4 -> 3/4), but red-flag escalation is driven by the
+  // pre-retrieval lexicon in red_flag_triage.dart, which is sampler-
+  // independent: the escalation frame still fires regardless. Compliance with
+  // the dosing guard has no such backstop, so the sampler is chosen to protect
+  // it.
+  static const double temperature = 0.6;
   static const double topP = 0.95;
-  static const int topK = 64;
+  static const int topK = 40;
   static const double minP = 0.0;
   // Max Tokens: realistic hard cap on response length. The previous value
   // (131072) was inherited from the Unsloth "context window" setting but the

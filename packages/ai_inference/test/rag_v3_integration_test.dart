@@ -78,14 +78,48 @@ void main() {
     final en = buildGemmaPromptV3(
         context: ctx, question: 'burned my hand', arabic: false);
     expect(en, contains('<|turn>system'));
-    expect(en, contains('SAFETY FIRST'));
-    expect(en, contains('SYMPTOM LOGIC'));
     expect(en, contains('MEDICAL REFERENCE'));
     expect(en, contains('<|turn>model'));
     final ar = buildGemmaPromptV3(
         context: ctx, question: 'حرق في اليد', arabic: true);
     expect(ar, contains('المرجع الطبي'));
-    expect(ar, contains('منطق الأعراض'));
+  });
+
+  test('prompt_v3: carries the register rule, not an answer scaffold', () {
+    // Regression guard. The previous system prompt opened with an enumerated
+    // "Order of thinking: 1. SAFETY FIRST / 2. IMMEDIATE ACTIONS / 3. PROLONGED
+    // CARE / 4. ESCALATION" block. Gemma-4-E2B echoed those labels as its answer
+    // structure, so "hi" produced a mass-casualty briefing. If an enumerated
+    // scaffold or all-caps section label comes back, this test must fail.
+    final en = buildGemmaPromptV3(
+        context: '- x [1]', question: 'hi', arabic: false);
+    expect(en, contains('greeting'),
+        reason: 'the register rule must be stated explicitly');
+    expect(en, isNot(contains('SAFETY FIRST')));
+    expect(en, isNot(contains('IMMEDIATE ACTIONS')));
+    expect(en, isNot(contains('PROLONGED CARE')));
+    expect(en, isNot(contains('Order of thinking')));
+    expect(en, isNot(contains('No greeting')));
+
+    final ar = buildGemmaPromptV3(
+        context: '- x [1]', question: 'مرحبا', arabic: true);
+    expect(ar, contains('التحية'));
+    expect(ar, isNot(contains('السلامة أولاً')));
+  });
+
+  test('prompt_v3: system prompt stays within the prefill budget', () {
+    // Prefill on the target device (MT6893) runs at ~4.58 tok/s, so system
+    // prompt length is the dominant term in time-to-first-token.
+    //
+    // Measured with the shipping Gemma-4 tokenizer via /tokenize:
+    //   kSystemPromptEnV3  790 chars -> 159 tokens  (~35 s prefill)
+    //   kSystemPromptArV3  570 chars -> 193 tokens  (~42 s prefill)
+    //
+    // Arabic is the tighter case in tokens despite being shorter in chars:
+    // Arabic text costs ~2.9 chars/token here vs ~5.0 for English. Both are
+    // down from the old 2,275-char / ~615-token warzone prompt.
+    expect(kSystemPromptEnV3.length, lessThan(900));
+    expect(kSystemPromptArV3.length, lessThan(700));
   });
 
   test('triage: numb hand (colloquial AR) fires stroke + frame', () {
@@ -156,6 +190,73 @@ void main() {
       final qv = _norm(await _embed(q));
       final ctx = rag.buildContext(qv, q);
       expect(ctx.hasRedFlag, isFalse);
+    },
+    skip: hasEmbedder
+        ? false
+        : 'embedding server not available (set RESCATE_EMB_SERVER)',
+  );
+
+  test(
+    'e2e similarity floor: a greeting retrieves no context, a medical query does',
+    timeout: const Timeout(Duration(minutes: 5)),
+    () async {
+      final assets = _loadAssets();
+      final rag = RagV3(assets);
+
+      // "hi" is Latin script, so the service applies kMinHitScoreLatin.
+      final unfiltered = rag.buildContext(_norm(await _embed('hi')));
+      expect(
+        unfiltered.context,
+        isNot('NO_RELEVANT_CONTEXT'),
+        reason: 'documents the pre-fix behaviour the floor exists to remove: '
+            'without a floor "hi" pulled in 16 unrelated sentences (~1,200 '
+            'tokens) of emergency-priming text',
+      );
+
+      final greet =
+          rag.buildContext(_norm(await _embed('hi')), minScore: kMinHitScoreLatin);
+      expect(greet.context, 'NO_RELEVANT_CONTEXT');
+      expect(greet.tokensEst, 0);
+
+      // A genuine medical query must survive the very same floor.
+      final burn = rag.buildContext(
+        _norm(await _embed('a person has a severe burn, what do I do')),
+        minScore: kMinHitScoreLatin,
+      );
+      expect(burn.context, isNot('NO_RELEVANT_CONTEXT'));
+      expect(burn.hits, isNotEmpty);
+    },
+    skip: hasEmbedder
+        ? false
+        : 'embedding server not available (set RESCATE_EMB_SERVER)',
+  );
+
+  test(
+    'e2e similarity floor: Arabic is exempt because its scores overlap',
+    timeout: const Timeout(Duration(minutes: 5)),
+    () async {
+      final assets = _loadAssets();
+      final rag = RagV3WithTriage(RagV3(assets));
+      for (final flag in kRedFlags) {
+        rag.registerAnchorVec(flag.id, _norm(await _embed(flag.anchorQuery)));
+      }
+
+      // A genuine Arabic medical question: antibiotic dosing for a wound.
+      const q = 'ما هي جرعة المضاد الحيوي للجرح؟';
+      final qv = _norm(await _embed(q));
+
+      // The wrapper exempts Arabic, so the question keeps its reference.
+      final ctx = rag.buildContext(qv, q);
+      expect(ctx.base.hits, isNotEmpty,
+          reason: 'Arabic must not be filtered - the wrapper passes no floor');
+
+      // Guard the justification: a Latin-calibrated floor would have silenced
+      // this real question. If this ever stops being true, the exemption can be
+      // revisited. Measured: 11 of 13 Arabic cases fall below 0.64, 4 of them
+      // genuinely medical.
+      final ifLatinFloorApplied =
+          rag.rag.buildContext(qv, minScore: kMinHitScoreLatin);
+      expect(ifLatinFloorApplied.context, 'NO_RELEVANT_CONTEXT');
     },
     skip: hasEmbedder
         ? false

@@ -38,15 +38,26 @@ void main() {
         ],
       );
 
+      // The legacy (embedder-less) path and the v3 path now share one system
+      // prompt, so these assert the unified text's invariants rather than the
+      // old legacy-only wording that used to drift out of sync with v3 - a
+      // drift that had left this path without the prescription-dosing guard.
+      expect(prompt, contains("Match the user's register"));
+      expect(prompt, contains('not emergency instructions'));
+      expect(prompt, contains('short numbered steps'));
+      expect(prompt, contains('then what to watch for'));
       expect(
         prompt,
-        contains('Answer every clear factual or general question directly'),
+        contains('Never recommend or dose prescription medicines'),
+        reason: 'the dosing guard must exist on the legacy path too',
       );
-      expect(prompt, contains('give short numbered actions immediately'));
-      expect(prompt, contains('Never reply with only a question'));
-      expect(prompt, contains('when to call emergency services'));
       expect(prompt, contains('Someone is choking'));
-      expect(prompt.length, lessThan(1100));
+      // The enumerated scaffold is what the model used to regurgitate.
+      expect(prompt, isNot(contains('SAFETY FIRST')));
+      expect(prompt, isNot(contains('Order of thinking')));
+      // ~1,040 chars today, 790 of them the system prompt. The bound is a
+      // regression guard against the 2,275-char warzone prompt returning.
+      expect(prompt.length, lessThan(1200));
     });
 
     test('Arabic prompt preserves the question and safety instructions', () {
@@ -58,11 +69,16 @@ void main() {
       );
 
       expect(prompt, contains('السؤال: $question'));
-      expect(prompt, contains('أجب مباشرة عن كل سؤال عام أو واضح'));
-      expect(prompt, contains('أعطِ خطوات قصيرة ومرتبة فوراً'));
-      expect(prompt, contains('لا ترد بسؤال فقط'));
-      expect(prompt, contains('متى يجب الاتصال بالطوارئ'));
-      expect(prompt.length, lessThan(1100));
+      expect(prompt, contains('طابق أسلوب السؤال'));
+      expect(prompt, contains('وليس تعليمات طوارئ'));
+      expect(prompt, contains('خطوات قصيرة مرقمة'));
+      expect(prompt, contains('ما يجب مراقبته'));
+      expect(
+        prompt,
+        contains('لا تصف جرعات أدوية بوصفة'),
+        reason: 'the dosing guard must exist on the Arabic path too',
+      );
+      expect(prompt.length, lessThan(1200));
     });
 
     test('retrieved context is bounded before model inference', () {

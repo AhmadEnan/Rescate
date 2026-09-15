@@ -4,11 +4,16 @@ import 'package:dev_profiler/dev_profiler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
+import 'rag/prompt_v3.dart';
+
 class LegacyRag {
-  static const String systemPromptEn =
-      """You are Rescate, an offline first-aid guide. Answer every clear factual or general question directly; never ask what is happening when the question is already clear. For an active emergency (abnormal breathing, severe bleeding, choking, unconsciousness, poisoning, or a major burn), give short numbered actions immediately. Ask at most one question only after giving immediate steps and only if it changes the next action. Never reply with only a question. Use the medical reference and never invent facts. State danger signs and when to call emergency services. No greeting, disclaimer, or vague intake. Keep it concise and actionable.""";
-  static const String systemPromptAr =
-      """أنت Rescate، دليل إسعافات أولية يعمل دون اتصال. أجب مباشرة عن كل سؤال عام أو واضح، ولا تسأل عما يحدث إذا كان السؤال واضحاً بالفعل. عند طارئ فعلي مثل اضطراب التنفس أو نزيف شديد أو اختناق أو فقدان وعي أو تسمم أو حرق كبير، أعطِ خطوات قصيرة ومرتبة فوراً. اسأل سؤالاً واحداً فقط بعد إعطاء الخطوات الفورية وفقط إذا كان سيغيّر الخطوة التالية. لا ترد بسؤال فقط. استخدم المرجع الطبي ولا تخترع معلومات. اذكر علامات الخطر ومتى يجب الاتصال بالطوارئ. بلا تحية أو إخلاء مسؤولية أو رد غامض. اجعل الإجابة قصيرة وقابلة للتنفيذ.""";
+  // Single source of truth: the legacy (embedder-less) path and the v3 path
+  // share one system prompt. They previously diverged, which meant a fix to the
+  // v3 prompt silently left the fallback path broken - and the fallback is what
+  // runs on a fresh install before the 444 MB embedder finishes downloading.
+  // The legacy text also lacked the prescription-dosing guard entirely.
+  static const String systemPromptEn = kSystemPromptEnV3;
+  static const String systemPromptAr = kSystemPromptArV3;
 
   static const Map<String, List<String>> arEnMap = {
     "حرق": ["burn", "burns", "burning"],
@@ -799,9 +804,11 @@ class LegacyRag {
     // request full reasoning can pass enableThinking: true.
     //
     // <bos> is omitted here — llama.cpp's tokenizer adds it via add_special.
-    final fastThought = arabic
-        ? 'السؤال واضح. أجب مباشرة باستخدام المرجع الطبي واذكر الخطوات الفورية الآمنة عند الحاجة.'
-        : 'The question is clear. Answer it directly using the medical reference and give safe immediate actions when relevant.';
+    //
+    // The prefilled thought is deliberately neutral: the previous text asserted
+    // "The question is clear ... give safe immediate actions when relevant",
+    // which primed emergency actions even for a greeting.
+    final fastThought = arabic ? kFastThoughtAr : kFastThoughtEn;
     final modelPrefix = enableThinking
         ? ''
         : '<|channel>thought\n$fastThought<channel|>\n';

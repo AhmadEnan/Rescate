@@ -92,7 +92,7 @@ class RagService {
     String? toolDeclarations,
     bool enableThinking = false,
   }) {
-    final arabic = question.runes.any((c) => c >= 0x0600 && c <= 0x06FF);
+    final arabic = isArabicScript(question);
     if (queryVec == null || !isReady) {
       // Fallback path (same as buildPromptV3's fallback branch).
       final chunks = legacy.LegacyRag.search(question, topK: 5);
@@ -147,7 +147,7 @@ class RagService {
     bool enableThinking = false,
     int? contextTokenBudget,
   }) async {
-    final arabic = question.runes.any((c) => c >= 0x0600 && c <= 0x06FF);
+    final arabic = isArabicScript(question);
 
     if (isReady && queryVec != null) {
       final ctx = _rag!.buildContext(

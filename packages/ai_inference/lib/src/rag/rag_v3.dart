@@ -10,6 +10,36 @@ import 'dart:typed_data';
 
 import 'rag_assets.dart';
 
+/// Similarity floor for Latin-script queries, in cosine.
+///
+/// Without a floor `buildContext` always emitted topK=16 sentences up to the
+/// token budget, so a context block of ~1,200 tokens was injected for *every*
+/// query - including "hi" and "what is the capital of France". That noise is
+/// not merely wasted prefill (~265 s at the measured 4.58 tok/s); it is
+/// emergency-priming text (triage tag colours, haemorrhage, cord delivery) fed
+/// to a model that then answers "hi" in emergency register.
+///
+/// The corpus is English, so a query's absolute cosine depends strongly on the
+/// query's script. Measured over the 32-case suite (top cosine per case):
+///
+///   Latin  : non-medical max 0.643 ("hi")   medical min 0.648 ("I fell")
+///   Arabic : non-medical max 0.590          medical min 0.463
+///
+/// The cross-lingual penalty (Arabic query vs English index) is *larger than
+/// the gap between relevant and irrelevant*, so no single threshold works: at
+/// 0.645 Arabic loses 11 of 13 cases, 4 of them genuinely medical (stroke,
+/// antibiotic dosing, burn, seizure recovery). Latin is therefore filtered and
+/// Arabic is left unfiltered until cross-lingual retrieval is fixed properly.
+///
+/// 0.645 sits in the measured safe window [0.64, 0.648]: it silences every
+/// non-medical Latin case (highest is "hi" at 0.6430) while silencing no
+/// genuine Latin medical case - the nearest is "I fell" at 0.6483. The margin
+/// is narrow by construction, because the two classes genuinely overlap; the
+/// boundary was chosen to favour keeping context (a false keep costs tokens, a
+/// false drop loses the reference). Re-measure with `rag_repro.py --cases`
+/// before changing it.
+const double kMinHitScoreLatin = 0.645;
+
 class RagHit {
   final RagSentence sentence;
   final double score;
@@ -138,9 +168,22 @@ class RagV3 {
   }
 
   /// Build the cited, token-budgeted context block.
+  ///
+  /// [minScore] drops any hit whose own cosine falls below it before neighbor
+  /// expansion. Null means no floor. See [kMinHitScoreLatin] for why the caller
+  /// - not this class - decides the value: it depends on the query's script.
   RagV3Context buildContext(Float32List queryVec,
-      {int topK = 16, int maxTokens = 1100, int neighbors = 1}) {
-    final ranked = rank(queryVec, topK: topK);
+      {int topK = 16,
+      int maxTokens = 1100,
+      int neighbors = 1,
+      double? minScore}) {
+    var ranked = rank(queryVec, topK: topK);
+    if (minScore != null) {
+      ranked = [
+        for (final h in ranked)
+          if (h.score >= minScore) h,
+      ];
+    }
     final expanded = expandNeighbors(ranked, neighbors: neighbors);
     final lines = <String>[];
     final sources = <String>[];
