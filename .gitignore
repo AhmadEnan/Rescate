@@ -117,3 +117,12 @@ app.*.symbols
 !**/ios/**/default.perspectivev3
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock
+
+# Dart workspace / Flutter tool state (generated per checkout, not portable)
+.flutter
+.flutter_tool_state
+**/.flutter
+**/.flutter_tool_state
+
+# Agent workspace memory
+.workbuddy-ai/

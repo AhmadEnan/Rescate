@@ -41,11 +41,15 @@ class RagV3WithTriage {
     int neighbors = 1,
   }) {
     final hits = triageQuery(rawQuery);
+    final arabic = isArabicScript(rawQuery);
     final base = rag.buildContext(
       queryVec,
       topK: topK,
       maxTokens: hits.isEmpty ? maxTokens : (maxTokens * 0.65).toInt(),
       neighbors: neighbors,
+      // Script-dependent floor; see kMinHitScoreLatin. Arabic is deliberately
+      // unfiltered because its scores cannot separate relevant from irrelevant.
+      minScore: arabic ? null : kMinHitScoreLatin,
     );
     if (hits.isEmpty) {
       return TriageAugmentedContext(
@@ -56,7 +60,6 @@ class RagV3WithTriage {
       );
     }
 
-    final arabic = rawQuery.runes.any((c) => c >= 0x0600 && c <= 0x06FF);
     final injectedSources = <String>[];
     final seenSources = base.sources.toSet();
     final injectedHits = <RagHit>[];

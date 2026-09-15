@@ -411,7 +411,11 @@ String normalizeArabic(String text) {
   return sb.toString();
 }
 
-bool _isArabicScript(String s) =>
+/// True when [s] contains any Arabic-script code point.
+///
+/// Shared by the triage lexicon and by retrieval's similarity floor, which is
+/// calibrated per script (see [kMinHitScoreLatin] in `rag_v3.dart`).
+bool isArabicScript(String s) =>
     s.runes.any((c) => c >= 0x0600 && c <= 0x06FF);
 
 /// Token-boundary pattern for [form].
@@ -424,7 +428,7 @@ final Map<String, RegExp> _formPatternCache = {};
 RegExp _formPattern(String form) {
   return _formPatternCache.putIfAbsent(form, () {
     final esc = RegExp.escape(form);
-    if (_isArabicScript(form)) {
+    if (isArabicScript(form)) {
       return RegExp('(?<![\\u0600-\\u06FF])$esc(?![\\u0600-\\u06FF])');
     }
     return RegExp("(?<![A-Za-z])$esc(?![A-Za-z])");
@@ -489,16 +493,34 @@ bool _notNearPresent(List<String> notNear, String q, String qn) {
 }
 
 /// Mandatory reasoning frame prepended to the user message on a triage hit.
+///
+/// This frame also carries the warzone framing that used to sit in the always-on
+/// system prompt (no reachable ambulance, prolonged care, prevent deterioration).
+/// Moving it here means a greeting or an ordinary question is never briefed on
+/// tourniquets, while a genuine red flag still gets the austere-environment
+/// assumptions it needs.
 String escalationFrame(List<TriageHit> hits, bool arabic) {
   if (hits.isEmpty) return '';
   final titles = hits.map((h) => h.flag.title).join('; ');
+  // The urgency must be UNCONDITIONAL. An earlier draft ended with "never make
+  // reaching a hospital a precondition of the advice", meant to stop the model
+  // withholding first aid in a warzone. Measured effect: the model read it as
+  // licence to hedge, and answered a stroke with "seek urgent care IF symptoms
+  // worsen" (rf_stroke_ar) - i.e. it downgraded a time-critical emergency to
+  // watch-and-wait. The no-hospital clause is now a reason to ALSO give steps,
+  // never a reason to soften the referral.
   if (arabic) {
-    return '⚠️ تنبيه تريج: يوجد مؤشرات على حالة طارئة ($titles). '
-        'أجب وفق إطار الطوارئ: عالجها كحالة خطيرة حتى يثبت العكس، اذكر لماذا '
-        'هذه الأعراض خطيرة تحديداً، وأعطِ خطوات فورية + متى تطلب رعاية عاجلة.';
+    return '⚠️ تنبيه تريج: يوجد مؤشرات على حالة طارئة ($titles). اذكر السبب '
+        'الخطير المحتمل ولماذا هذه الأعراض خطيرة تحديداً. قل بوضوح وبدون شروط '
+        'إن الحالة تحتاج رعاية طبية طارئة الآن، ولا تنتظر لترى إن كانت تتحسن. '
+        'أعطِ الخطوات الفورية أولاً ثم ما يجب مراقبته، حتى يُساعد الشخص فعلاً '
+        'حتى لو تعذّر الوصول إلى إسعاف أو مستشفى.';
   }
   return '⚠️ TRIAGE ALERT: the query contains red-flag signs ($titles). '
-      'Answer using the emergency frame: treat as serious until proven otherwise, '
-      'explain WHY these specific symptoms are dangerous, give immediate actions '
-      'and when to seek urgent care.';
+      'Name the most likely serious cause and say why these specific signs are '
+      'dangerous. State clearly and without conditions that this needs '
+      'emergency medical care now - do not wait to see whether it improves. '
+      'Give the immediate actions first as short numbered steps, then what to '
+      'watch for, so the person is genuinely helped even if no ambulance or '
+      'hospital can be reached.';
 }
