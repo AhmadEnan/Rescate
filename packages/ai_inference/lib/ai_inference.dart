@@ -21,6 +21,7 @@ library ai_inference;
 export 'src/device_profile.dart';
 export 'src/benchmark.dart';
 export 'src/legacy_rag.dart';
+export 'src/rag/context_budget.dart';
 export 'src/rag/rag_service.dart';
 export 'src/rag/red_flag_triage.dart';
 export 'src/rag/embedder_service.dart';

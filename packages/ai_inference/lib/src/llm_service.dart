@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
 
 import 'device_profile.dart';
+import 'rag/context_budget.dart';
 import 'rag/embedder_service.dart';
 import 'rag/rag_service.dart';
 import 'legacy_rag.dart';
@@ -135,17 +136,14 @@ class LlmService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// RAG context token budget for this device. Retrieved sentences dominate
-  /// the CPU prefill — TTFT scales ~linearly with prompt tokens (a 1400-token
-  /// context measured 130s TTFT on an Exynos 1280). Tighter budgets on
-  /// memory-constrained devices trade some citation breadth for latency;
-  /// high-RAM devices keep the validated default.
+  /// RAG context token budget for this device.
+  ///
+  /// Retrieved sentences dominate the prefill, and TTFT scales ~linearly with
+  /// prompt tokens, so this is the main latency lever available at prompt-
+  /// assembly time. The budget is bounded by [RagContextBudget] — see that
+  /// file for why RAM alone was the wrong signal and what replaced it.
   static int _ragContextBudget() {
-    final p = LlmDefaults.activeProfile;
-    if (p == null) return 1400;
-    if (p.isLowRam || p.totalRamMb <= 5000) return 600;
-    if (p.totalRamMb <= 7500) return 800;
-    return 1400;
+    return RagContextBudget.resolve(profile: LlmDefaults.activeProfile);
   }
 
   // ── Model lifecycle ────────────────────────────────────────────────────────
@@ -336,6 +334,11 @@ class LlmService extends ChangeNotifier {
 
             _loadedModelPath = modelPath;
             _setStatus(LlmStatus.ready);
+            // A different GGUF has a different throughput profile, so the
+            // prefill-rate EMA measured against the previous model must not
+            // carry over — it would size this model's context from the last
+            // model's speed. See RagContextBudget.reset.
+            RagContextBudget.reset();
             rungStep?.op(1);
             rungStep?.end();
             // Emit the ACTUAL resolved backend config (the dead-code event in
@@ -514,7 +517,13 @@ class LlmService extends ChangeNotifier {
       stepRag?.setData('v3', queryVec != null);
       stepRag?.setData('triaged', ragResult.triaged);
       stepRag?.setData('prompt_chars', fullPrompt.length);
-      stepRag?.setData('context_budget', _ragContextBudget());
+      // The full derivation, not just the number — a budget that moved between
+      // two runs of the same build is otherwise indistinguishable from a
+      // regression. See RagContextBudget.describe.
+      stepRag?.setData(
+        'context_budget',
+        RagContextBudget.describe(profile: LlmDefaults.activeProfile),
+      );
       // Token counting is diagnostic-only and must never block a turn. It
       // runs BEFORE stepRag.end(): setData is a no-op on a closed step.
       if (kProfilerEnabled) {
@@ -789,6 +798,10 @@ class LlmService extends ChangeNotifier {
       stepRag?.setData('triaged', ragTriaged);
       stepRag?.setData('ms', ragSw.elapsedMilliseconds);
       stepRag?.setData('prompt_chars', prompt.length);
+      stepRag?.setData(
+        'context_budget',
+        RagContextBudget.describe(profile: LlmDefaults.activeProfile),
+      );
       // Token counting runs BEFORE stepRag.end(): setData is a no-op on a
       // closed step (review round 2).
       if (kProfilerEnabled) {
@@ -1035,6 +1048,15 @@ class LlmService extends ChangeNotifier {
       };
       if (runtime.isNotEmpty) turn.setData('runtime', runtime);
       if (perf != null) {
+        // Feed the measured prefill rate back into the next turn's retrieval
+        // budget. This is the authoritative speed signal: RAM says how much
+        // the device *can hold*, this says how fast it *runs*. A rejected
+        // sample (too small, implausible) simply leaves the budget where the
+        // hardware inference put it. See RagContextBudget.
+        final double? prefillTps = RagContextBudget.observePrefill(
+          promptEvalTokens: perf.promptEvalTokens,
+          promptEvalMs: perf.promptEvalMs.round(),
+        );
         turn.setData('native', <String, Object?>{
           'load_ms': perf.loadMs.round(),
           'prompt_eval_ms': perf.promptEvalMs.round(),
@@ -1050,6 +1072,9 @@ class LlmService extends ChangeNotifier {
           'decode_tokens_per_sec': perf.evalMs > 0
               ? (perf.evalTokens * 1000 / perf.evalMs).round()
               : 0,
+          'prefill_sample_accepted': prefillTps != null,
+          'next_context_budget':
+              RagContextBudget.resolve(profile: LlmDefaults.activeProfile),
         });
       }
     } catch (_) {
@@ -1117,6 +1142,8 @@ class LlmService extends ChangeNotifier {
     }
     _loadedModelPath = null;
     _loadedRuntimeConfig = <String, Object?>{};
+    // The measurement was taken against the model that is now gone.
+    RagContextBudget.reset();
   }
 }
 
