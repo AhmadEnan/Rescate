@@ -5,6 +5,7 @@
 // budget cuts and prepends the escalation frame to the user message.
 import 'dart:typed_data';
 
+import 'context_budget.dart';
 import 'rag_v3.dart';
 import 'red_flag_triage.dart';
 
@@ -37,7 +38,7 @@ class RagV3WithTriage {
     Float32List queryVec,
     String rawQuery, {
     int topK = 16,
-    int maxTokens = 1400,
+    int maxTokens = RagContextBudget.validatedDefault,
     int neighbors = 1,
   }) {
     final hits = triageQuery(rawQuery);

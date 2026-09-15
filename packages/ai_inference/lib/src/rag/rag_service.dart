@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import 'context_budget.dart';
 import 'rag_assets.dart';
 import 'rag_v3.dart';
 import 'red_flag_triage.dart';
@@ -138,8 +139,9 @@ class RagService {
   ///
   /// [contextTokenBudget] caps the retrieved-context size. Retrieved text
   /// dominates CPU prefill and time-to-first-token scales ~linearly with
-  /// prompt tokens, so callers pass a device-aware budget (see LlmService).
-  /// Null keeps the current default (1400) that the eval suite validated.
+  /// prompt tokens, so callers pass a device-aware budget (see
+  /// [RagContextBudget] for how it is derived). Null falls back to
+  /// [RagContextBudget.validatedDefault], the budget the eval suite validated.
   Future<({String prompt, List<String> sources, bool triaged})> buildPromptV3({
     required String question,
     required Float32List? queryVec,
@@ -153,7 +155,7 @@ class RagService {
       final ctx = _rag!.buildContext(
         queryVec,
         question,
-        maxTokens: contextTokenBudget ?? 1400,
+        maxTokens: contextTokenBudget ?? RagContextBudget.validatedDefault,
       );
       final prompt = buildGemmaPromptV3(
         context: ctx.contextWithFrame,
