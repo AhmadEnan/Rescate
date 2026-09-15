@@ -34,19 +34,22 @@ class LlmLoadRung {
 }
 
 /// SoC identifiers (matched as substrings against `Build.SOC_MODEL`, lowercased)
-/// whose Vulkan compute path is known to be pathologically slow for llama.cpp
-/// rather than outright broken.
+/// whose Vulkan compute path must not be used, for two observed failure modes:
 ///
-/// This is a DIFFERENT failure mode from the SIGSEGV crashes the fallback
-/// ladder was originally built for: the model loads fine and generates correct
-/// output, but batched prefill delivers no speedup over single-token decode —
-/// the signature of per-op GPU round-trips instead of real batch execution.
-/// Measured on MT6893 (Dimensity 1200 / Mali-G77): prefill 2.09 tok/s vs
-/// decode 1.50 tok/s, where a healthy backend shows prefill 10-100x decode.
+/// 1. Pathologically SLOW (loads fine, correct output, but batched prefill
+///    delivers no speedup over single-token decode — the signature of per-op
+///    GPU round-trips instead of real batch execution). Measured on MT6893
+///    (Dimensity 1200 / Mali-G77): prefill 2.09 tok/s vs decode 1.50 tok/s,
+///    where a healthy backend shows prefill 10-100x decode.
+/// 2. Outright CRASH-prone (SIGSEGV in the Vulkan backend). Observed on
+///    s5e8825 (Exynos 1280 / Mali-G68): rung 0 dies on load; the sticky
+///    crash marker then collapses the ladder to CPU on every subsequent
+///    start — so the first run is a guaranteed crash. Skipping Vulkan from
+///    the start avoids the crash entirely.
 ///
 /// Devices matching this list start the ladder at the CPU rung, skipping the
-/// Vulkan rungs entirely. They are not crash-prone, so nothing is lost by
-/// declining a GPU path that is slower than the CPU one anyway.
+/// Vulkan rungs entirely. Nothing is lost by declining a GPU path that is
+/// slower than (or fatal on) the CPU path anyway.
 const List<String> slowVulkanSocMarkers = <String>[
   'mt6893', // Dimensity 1200, Mali-G77
   'mt6889', // Dimensity 1000, Mali-G77
@@ -54,6 +57,7 @@ const List<String> slowVulkanSocMarkers = <String>[
   'mt6853', // Dimensity 800U/720, Mali-G57
   'mt6785', // Helio G95, Mali-G76
   'mt6769', // Helio G8x/P65, Mali-G52
+  's5e8825', // Exynos 1280, Mali-G68 — Vulkan SIGSEGVs on load (Galaxy A25)
 ];
 
 /// Whether [socModel] is a known slow-Vulkan part (see [slowVulkanSocMarkers]).

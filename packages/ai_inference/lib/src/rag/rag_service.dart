@@ -135,16 +135,26 @@ class RagService {
 
   /// Full search+context. [queryVec] is the embedded user query; when null
   /// (embedder unavailable) falls back to LegacyRag lexical retrieval.
+  ///
+  /// [contextTokenBudget] caps the retrieved-context size. Retrieved text
+  /// dominates CPU prefill and time-to-first-token scales ~linearly with
+  /// prompt tokens, so callers pass a device-aware budget (see LlmService).
+  /// Null keeps the current default (1400) that the eval suite validated.
   Future<({String prompt, List<String> sources, bool triaged})> buildPromptV3({
     required String question,
     required Float32List? queryVec,
     String? toolDeclarations,
     bool enableThinking = false,
+    int? contextTokenBudget,
   }) async {
     final arabic = question.runes.any((c) => c >= 0x0600 && c <= 0x06FF);
 
     if (isReady && queryVec != null) {
-      final ctx = _rag!.buildContext(queryVec, question);
+      final ctx = _rag!.buildContext(
+        queryVec,
+        question,
+        maxTokens: contextTokenBudget ?? 1400,
+      );
       final prompt = buildGemmaPromptV3(
         context: ctx.contextWithFrame,
         question: question,

@@ -254,7 +254,7 @@ void main() {
   });
 
   group('detectModels & cleanup', () {
-    test('lists only valid GGUF files, cleans .part leftovers', () async {
+    test('lists only valid GGUF files, cleans stale .part leftovers', () async {
       final store = storeWithFreeBytes(10 << 30);
       await store.modelsDirectory();
 
@@ -262,18 +262,41 @@ void main() {
         ..writeAsBytesSync(ggufBytes(1 << 20));
       File('${sandbox.path}/broken.gguf')
           .writeAsBytesSync(Uint8List(5000)); // bad magic
-      File('${sandbox.path}/half.gguf.part')
-          .writeAsBytesSync(ggufBytes(999)); // stale partial
+      final stalePart = File('${sandbox.path}/half.gguf.part')
+        ..writeAsBytesSync(ggufBytes(999)); // stale partial
+      // Backdate past the cleanup TTL: fresh .part files belong to a
+      // resumable download and must SURVIVE startup detection.
+      stalePart.setLastModifiedSync(
+          DateTime.now().subtract(const Duration(days: 20)));
       File('${sandbox.path}/notes.txt').writeAsStringSync('not a model');
 
       final models = await store.detectModels();
 
       expect(models, hasLength(1));
-      expect(models.single.path, good.path);
+      // Path separators are normalized per-platform; compare the tail.
+      expect(models.single.path.replaceAll('\\', '/'), good.path.replaceAll('\\', '/'));
       expect(File('${sandbox.path}/half.gguf.part').existsSync(), isFalse,
-          reason: 'startup detection must clean stale .part files');
+          reason: 'startup detection must clean .part files past the TTL');
       expect(File('${sandbox.path}/notes.txt').existsSync(), isTrue,
           reason: 'unrelated files are not touched');
+    });
+
+    test('fresh .part files survive startup detection (resume support)',
+        () async {
+      final store = storeWithFreeBytes(10 << 30);
+      await store.modelsDirectory();
+
+      File('${sandbox.path}/fresh.gguf.part')
+          .writeAsBytesSync(ggufBytes(999));
+      File('${sandbox.path}/good.gguf')
+        ..writeAsBytesSync(ggufBytes(1 << 20));
+
+      final models = await store.detectModels();
+
+      expect(models, hasLength(1));
+      expect(File('${sandbox.path}/fresh.gguf.part').existsSync(), isTrue,
+          reason: 'a recent .part is an in-flight resumable download — '
+              'startup cleanup must not reset a multi-GB transfer');
     });
   });
 

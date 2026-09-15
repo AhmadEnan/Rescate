@@ -11,8 +11,10 @@
 // cancellation, crash — leaves at most a `.part` file, which is cleaned on
 // the next interaction with the store.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -149,7 +151,9 @@ class ModelStore {
     }
 
     final dir = await modelsDirectory();
-    _cleanupPartialFiles(dir);
+    // Note: unlike downloadModel, picker imports start fresh — a leftover
+    // `.part` for THIS target is removed below, but other models' parts are
+    // left alone (they may be an in-flight resumable download).
 
     final totalBytes = source.lengthSync();
     if (totalBytes <= _kMinPlausibleGgufBytes) {
@@ -179,38 +183,16 @@ class ModelStore {
       );
     }
 
-    final digestSink = _StreamingSha256();
-    final rafSource = source.openSync();
-    try {
-      final rafPart = partFile.openSync(mode: FileMode.write);
-      try {
-        var copied = 0;
-        // Sequential read without seeks: file_picker cache copies (and some
-        // content-provider fds) reject setPositionSync with EINVAL (errno 22)
-        // even for valid offsets, while sequential reads always work. Since
-        // import is strictly front-to-back, the position is implicit.
-        while (copied < totalBytes) {
-          final chunkSize = copied + _kCopyChunkBytes > totalBytes
-              ? totalBytes - copied
-              : _kCopyChunkBytes;
-          final chunk = rafSource.readSync(chunkSize);
-          if (chunk.isEmpty) break;
-          rafPart.writeFromSync(chunk);
-          digestSink.add(chunk);
-          copied += chunk.length;
-          if (onProgress != null) {
-            final keepGoing = onProgress(copied, totalBytes);
-            if (!keepGoing) {
-              // Cancelled: bail out and leave nothing behind.
-              throw ModelImportException('cancelled');
-            }
-          }
-        }
-        rafPart.flushSync();
-      } finally {
-        rafPart.closeSync();
-      }
+    // Copy + hash run in a background isolate; progress arrives on the UI
+    // isolate between chunks so cancellation stays responsive.
+    final copy = await _copyWithHashProgress(
+      sourcePath: sourcePath,
+      partPath: partFile.path,
+      totalBytes: totalBytes,
+      onProgress: onProgress,
+    );
 
+    try {
       // Post-copy validation on the part file: length must match and the
       // header must still parse from the sandbox copy itself.
       final copiedCheck = validateGgufHeader(partFile.path);
@@ -227,7 +209,7 @@ class ModelStore {
       partFile.renameSync(target.path);
       try {
         File('${target.path}.sha256').writeAsStringSync(
-          '${digestSink.hex}\n$totalBytes\n',
+          '${copy.sha256Hex}\n$totalBytes\n',
           flush: true,
         );
       } catch (_) {
@@ -241,8 +223,6 @@ class ModelStore {
     } catch (e) {
       _deleteQuietly(partFile);
       throw ModelImportException('Import failed: $e');
-    } finally {
-      rafSource.closeSync();
     }
 
     if (deleteSource) _deleteQuietly(source);
@@ -251,7 +231,7 @@ class ModelStore {
       path: target.path,
       fileName: name,
       sizeBytes: totalBytes,
-      sha256Hex: digestSink.hex,
+      sha256Hex: copy.sha256Hex,
     );
   }
 
@@ -271,9 +251,14 @@ class ModelStore {
 
   /// Downloads a model over HTTP directly into the sandbox with the same
   /// atomicity guarantees as file import:
-  ///   stream -> `<name>.gguf.part` (hashing chunk-wise)
-  ///   -> GGUF header re-validation on the sandbox copy
-  ///   -> atomic rename -> `.sha256` sidecar.
+  ///   stream -> `<name>.gguf.part` -> GGUF header re-validation on the
+  ///   sandbox copy -> atomic rename -> `.sha256` sidecar.
+  ///
+  /// Resumable: an interrupted or cancelled download KEEPS its `.part` file
+  /// and the next call continues from there via an HTTP `Range` request, so
+  /// a flaky network no longer restarts a multi-GB download from zero.
+  /// Validation failures (bad header, checksum mismatch) still delete the
+  /// partial — corrupted bytes must never survive into a resume.
   ///
   /// Share-friendly flow: a user who received the app from someone else can
   /// fetch models in-app without any file transfer or SAF picker.
@@ -295,7 +280,6 @@ class ModelStore {
     }
 
     final dir = await modelsDirectory();
-    _cleanupPartialFiles(dir);
 
     final target = File('${dir.path}/$name');
     final partFile = File('${target.path}.part');
@@ -304,25 +288,86 @@ class ModelStore {
         'A model named "$name" is already stored. Remove it first or rename the new file.',
       );
     }
-    if (partFile.existsSync()) partFile.deleteSync();
+
+    // Resume point: a leftover `.part` from an earlier attempt is an asset,
+    // not garbage — bytes before it were already written (but NOT hashed, so
+    // the full-file hash at the end is what vouches for integrity).
+    var existingBytes = 0;
+    if (partFile.existsSync()) {
+      existingBytes = partFile.lengthSync();
+      if (existingBytes > 0 &&
+          expectedBytes != null &&
+          existingBytes > expectedBytes) {
+        // Partial is larger than the pinned artifact: stale junk, restart.
+        _deleteQuietly(partFile);
+        existingBytes = 0;
+      }
+    }
+    if (existingBytes > 0 && existingBytes <= _kMinPlausibleGgufBytes) {
+      _deleteQuietly(partFile);
+      existingBytes = 0;
+    }
+
+    // Whether the current `.part` must survive this call (cancel/interrupt).
+    // Validation failures set this false — corrupt bytes poison the resume.
+    var keepPart = false;
 
     final http = client ?? HttpClient();
+    HttpClientResponse response;
     try {
       http.connectionTimeout = const Duration(seconds: 30);
-      final request = await http.getUrl(url);
-      final response = await request.close();
-      if (response.statusCode != 200) {
+      var request = await http.getUrl(url);
+      if (existingBytes > 0) {
+        request.headers.set(HttpHeaders.rangeHeader, 'bytes=$existingBytes-');
+      }
+      response = await request.close();
+
+      if (existingBytes > 0 && response.statusCode == 200) {
+        // Server ignored the Range header: drop the partial, start over.
+        await response.drain<void>();
+        _deleteQuietly(partFile);
+        existingBytes = 0;
+        request = await http.getUrl(url);
+        response = await request.close();
+      }
+
+      final resuming = existingBytes > 0 && response.statusCode == 206;
+      if (!resuming && response.statusCode != 200) {
         await response.drain<void>();
         throw ModelImportException(
           'Download failed: HTTP ${response.statusCode} for $name.',
         );
+      }
+      if (resuming) {
+        // Content-Range: "bytes <start>-<end>/<total>". A start that doesn't
+        // match what we have means the server artifact changed under us.
+        final contentRange =
+            response.headers.value(HttpHeaders.contentRangeHeader) ?? '';
+        final match =
+            RegExp(r'bytes\s+(\d+)-').firstMatch(contentRange);
+        final start = match == null ? null : int.tryParse(match.group(1)!);
+        if (start != existingBytes) {
+          await response.drain<void>();
+          _deleteQuietly(partFile);
+          existingBytes = 0;
+          request = await http.getUrl(url);
+          response = await request.close();
+          if (response.statusCode != 200) {
+            await response.drain<void>();
+            throw ModelImportException(
+              'Download failed: HTTP ${response.statusCode} for $name.',
+            );
+          }
+        }
       }
 
       // Total size: prefer server content-length; fall back to caller hint.
       // API contract: when BOTH the server length and expectedBytes are
       // known and disagree, the server artifact has drifted from what the
       // caller pinned — fail fast before streaming 400MB to nowhere.
-      final contentLength = response.contentLength; // -1 when unknown
+      // On a 206 the content-length covers only the REMAINING bytes.
+      var contentLength = response.contentLength; // -1 when unknown
+      if (resuming && contentLength > 0) contentLength += existingBytes;
       if (contentLength > 0 &&
           expectedBytes != null &&
           expectedBytes > 0 &&
@@ -350,25 +395,23 @@ class ModelStore {
         }
       }
 
-      final digestSink = _StreamingSha256();
-      var copied = 0;
-      final rafPart = partFile.openSync(mode: FileMode.write);
+      var copied = existingBytes;
+      final rafPart =
+          partFile.openSync(mode: resuming ? FileMode.append : FileMode.write);
       try {
         await for (final chunk in response) {
           rafPart.writeFromSync(chunk);
-          digestSink.add(chunk);
           copied += chunk.length;
           if (onProgress != null) {
             final keepGoing =
                 onProgress(copied, totalBytes > 0 ? totalBytes : null);
             if (!keepGoing) {
+              keepPart = true; // resume from here next time
               throw ModelImportException('cancelled');
             }
           }
         }
         rafPart.flushSync();
-      } catch (e) {
-        rethrow;
       } finally {
         rafPart.closeSync();
         response.detachSocket().then((_) {}).catchError((_) {});
@@ -378,8 +421,11 @@ class ModelStore {
         throw ModelImportException('Downloaded file is too small to be a GGUF model.');
       }
       if (totalBytes > 0 && copied != totalBytes) {
+        keepPart = true; // interrupted, not corrupt — resume next attempt
         throw ModelImportException(
-          'Download was interrupted: expected $totalBytes bytes, got $copied.',
+          'Download interrupted at ${(copied * 100 ~/ totalBytes)}% '
+          '(expected $totalBytes bytes, got $copied). Progress is kept — '
+          'tap Download again to resume.',
         );
       }
 
@@ -391,7 +437,10 @@ class ModelStore {
         );
       }
 
-      final actualSha = await _hashFile(partFile.path);
+      // Full-file hash OFF the UI isolate: it vouches for the WHOLE file,
+      // including bytes written before a resume, so the incremental digest
+      // state doesn't need to survive process restarts.
+      final actualSha = await Isolate.run(() => _hashFileSync(partFile.path));
       if (expectedSha256 != null &&
           actualSha.toLowerCase() != expectedSha256.toLowerCase()) {
         throw ModelImportException(
@@ -411,11 +460,16 @@ class ModelStore {
         sha256Hex: actualSha,
       );
     } on ModelImportException {
-      _deleteQuietly(partFile);
+      if (!keepPart) _deleteQuietly(partFile);
       rethrow;
     } catch (e) {
-      _deleteQuietly(partFile);
-      throw ModelImportException('Download failed: $e');
+      // Network errors mid-stream keep the partial: resume beats restart.
+      // (A torn connection surfaces as HttpException/SocketException here —
+      // the bytes on disk are still a valid resume point.)
+      keepPart = true;
+      throw ModelImportException(
+        'Download failed (progress kept — retry to resume): $e',
+      );
     } finally {
       if (client == null) http.close();
     }
@@ -521,10 +575,21 @@ class ModelStore {
 
   // ---- helpers --------------------------------------------------------------
 
-  void _cleanupPartialFiles(Directory dir) {
+  /// Deletes `.part` leftovers. Called from [detectModels] (app start) with a
+  /// generous TTL: parts newer than [maxAge] belong to a resumable download
+  /// and MUST survive (deleting them would reset a multi-GB transfer), while
+  /// ancient parts are garbage from an abandoned attempt.
+  void _cleanupPartialFiles(Directory dir, {Duration maxAge = const Duration(days: 14)}) {
+    final cutoff = DateTime.now().subtract(maxAge);
     for (final entity in dir.listSync()) {
-      if (entity is File && entity.path.endsWith('.part')) {
-        _deleteQuietly(entity);
+      if (entity is! File) continue;
+      if (!entity.path.endsWith('.part')) continue;
+      try {
+        if (entity.statSync().modified.isBefore(cutoff)) {
+          _deleteQuietly(entity);
+        }
+      } catch (_) {
+        // Unreadable part file: leave it; the next pass will retry.
       }
     }
   }
@@ -555,7 +620,13 @@ class ModelStore {
     }
   }
 
-  static Future<String> _hashFile(String path) async {
+  /// SHA-256 of [path], computed chunk-wise. Runs in a background isolate:
+  /// hashing a multi-GB model synchronously on the UI isolate is an ANR.
+  static Future<String> _hashFile(String path) {
+    return Isolate.run(() => _hashFileSync(path));
+  }
+
+  static String _hashFileSync(String path) {
     final hasher = _StreamingSha256();
     // Sequential read without seeks (same errno-22 consideration as import:
     // content-provider fds may reject setPositionSync).
@@ -629,6 +700,155 @@ class ModelStore {
   static const int _kMinPlausibleGgufBytes = 1000;
   static const int _kCopyChunkBytes = 1024 * 512;
   static const int _kFreeSpaceHeadroomBytes = 256 * 1024 * 1024;
+
+  /// Runs the chunk copy + SHA-256 in a background isolate, forwarding
+  /// progress messages to [onProgress] on the caller's isolate. Returning
+  /// `false` from [onProgress] cancels: the isolate is killed and the
+  /// `.part` file is removed before rethrowing.
+  ///
+  /// The copy MUST leave the UI isolate: a multi-GB synchronous stream here
+  /// froze the app into "rescate_app isn't responding" for the whole import.
+  static Future<_CopyResult> _copyWithHashProgress({
+    required String sourcePath,
+    required String partPath,
+    required int totalBytes,
+    bool Function(int copiedBytes, int totalBytes)? onProgress,
+  }) async {
+    final resultPort = ReceivePort();
+    final errorPort = ReceivePort();
+    final done = Completer<_CopyResult>();
+    Isolate? isolate;
+    var cancelled = false;
+
+    final sub = resultPort.listen((msg) {
+      if (done.isCompleted) return;
+      if (msg is _CopyResult) {
+        done.complete(msg);
+      } else if (msg is int) {
+        final keepGoing = onProgress?.call(msg, totalBytes) ?? true;
+        if (!keepGoing) {
+          cancelled = true;
+          done.completeError(ModelImportException('cancelled'));
+        }
+      }
+    });
+    errorPort.listen((msg) {
+      if (!done.isCompleted) {
+        done.completeError(StateError('copy worker failed: $msg'));
+      }
+    });
+
+    try {
+      isolate = await Isolate.spawn(
+        _copyWithHashEntry,
+        _CopyJob(
+          sourcePath: sourcePath,
+          partPath: partPath,
+          totalBytes: totalBytes,
+          progress: resultPort.sendPort,
+        ),
+        onError: errorPort.sendPort,
+        errorsAreFatal: true,
+      );
+      return await done.future;
+    } on ModelImportException {
+      isolate?.kill(priority: Isolate.beforeNextEvent);
+      await _deleteQuietlyRetrying(File(partPath));
+      rethrow;
+    } catch (e) {
+      isolate?.kill(priority: Isolate.beforeNextEvent);
+      await _deleteQuietlyRetrying(File(partPath));
+      if (cancelled) rethrow;
+      throw ModelImportException('Import failed: $e');
+    } finally {
+      await sub.cancel();
+      errorPort.close();
+      resultPort.close();
+      isolate?.kill(priority: Isolate.beforeNextEvent);
+    }
+  }
+
+  /// Delete with retries: a killed isolate's file handles can take a few
+  /// event-loop turns to be released by the OS (Windows locks open files),
+  /// so a single synchronous delete may fail with errno 32.
+  static Future<void> _deleteQuietlyRetrying(File file,
+      {int attempts = 6, Duration delay = const Duration(milliseconds: 50)}) async {
+    for (var i = 0; i < attempts; i++) {
+      try {
+        if (!file.existsSync()) return;
+        file.deleteSync();
+        return;
+      } catch (_) {
+        await Future<void>.delayed(delay);
+      }
+    }
+  }
+}
+
+/// Request payload handed to the copy isolate.
+class _CopyJob {
+  final String sourcePath;
+  final String partPath;
+  final int totalBytes;
+  final SendPort progress;
+  const _CopyJob({
+    required this.sourcePath,
+    required this.partPath,
+    required this.totalBytes,
+    required this.progress,
+  });
+}
+
+/// Outcome reported back from the copy isolate.
+class _CopyResult {
+  final String sha256Hex;
+  final int copiedBytes;
+  const _CopyResult(this.sha256Hex, this.copiedBytes);
+}
+
+/// Entry point running OUTSIDE the main isolate: streams source → part file
+/// while hashing, reporting progress per chunk. Exits with the [_CopyResult]
+/// on the progress port (cheap isolate exit-transfer).
+void _copyWithHashEntry(_CopyJob job) {
+  final chunkBytes = ModelStore._kCopyChunkBytes;
+  final digestSink = _StreamingSha256();
+  final source = File(job.sourcePath);
+  final part = File(job.partPath);
+  final rafSource = source.openSync();
+  try {
+    final rafPart = part.openSync(mode: FileMode.write);
+    try {
+      var copied = 0;
+      // Sequential read without seeks: file_picker cache copies (and some
+      // content-provider fds) reject setPositionSync with EINVAL (errno 22)
+      // even for valid offsets, while sequential reads always work. Since
+      // import is strictly front-to-back, the position is implicit.
+      while (copied < job.totalBytes) {
+        final chunkSize = copied + chunkBytes > job.totalBytes
+            ? job.totalBytes - copied
+            : chunkBytes;
+        final chunk = rafSource.readSync(chunkSize);
+        if (chunk.isEmpty) break;
+        rafPart.writeFromSync(chunk);
+        digestSink.add(chunk);
+        copied += chunk.length;
+        // Per-chunk report preserves the original sync loop's contract:
+        // callers see every 512KiB step, with the final report at 100%.
+        job.progress.send(copied);
+      }
+      rafPart.flushSync();
+      // Send-and-return (not Isolate.exit): exiting here would skip the
+      // enclosing finally blocks, leaving rafPart/rafSource handles open —
+      // on Windows the subsequent rename/delete then fails with errno 32.
+      // A normal return runs the finallys first; the message is delivered
+      // to the main isolate after this function's sync tail completes.
+      job.progress.send(_CopyResult(digestSink.hex, copied));
+    } finally {
+      rafPart.closeSync();
+    }
+  } finally {
+    rafSource.closeSync();
+  }
 }
 
 /// True streaming SHA-256: bytes are hashed chunk-by-chunk with a fixed-size
