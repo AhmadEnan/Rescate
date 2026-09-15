@@ -2,6 +2,7 @@
 // cancellation, free-space, HTTP Range resume, and happy path — using a
 // local HttpServer and ModelStore.forDirectory (no path_provider/platform
 // channels needed).
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -20,6 +21,32 @@ class _BlobServer {
   // Per-path content-length overrides (simulates server artifact drift).
   final Map<String, int> lengthOverrides = {};
   int chunkSize = 64 * 1024;
+
+  /// Per-path byte offset at which the server stops writing and waits for
+  /// [release].
+  ///
+  /// Needed because a test CANNOT control how the client's response stream is
+  /// chunked: `HttpClientResponse` emits one event per socket read, and how
+  /// many reads an N-byte body takes is a function of socket/loopback
+  /// buffering — not of [chunkSize] or of the `flush()` calls below. A test
+  /// that decides to cancel "after N progress callbacks" therefore races the
+  /// client: on a fast runner the whole body can land in one or two reads, the
+  /// callback count never reaches N, and the download completes. Holding the
+  /// server at a known offset makes "the body is incomplete" a fact rather
+  /// than a hope.
+  final Map<String, int> holdAfter = {};
+  final Map<String, Completer<void>> _gates = {};
+
+  /// Upper bound on how long a [holdAfter] gate blocks before the server
+  /// resumes writing. See the hold site for why this must be bounded.
+  static const Duration holdTimeout = Duration(seconds: 2);
+
+  /// Releases a hold created via [holdAfter]. Safe to call more than once,
+  /// and safe to call for a path that was never held.
+  void release(String name) {
+    final gate = _gates[name];
+    if (gate != null && !gate.isCompleted) gate.complete();
+  }
 
   Future<String> start() async {
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -54,10 +81,36 @@ class _BlobServer {
       }
       req.response.contentLength = declaredLength - start;
       final limit = interrupted.contains(name) ? blob.length ~/ 2 : blob.length;
-      for (var off = start; off < limit; off += chunkSize) {
-        final end = (off + chunkSize) > limit ? limit : off + chunkSize;
-        req.response.add(blob.sublist(off, end));
-        await req.response.flush();
+      try {
+        final holdAt = holdAfter[name];
+        var off = start;
+        var held = false;
+        while (off < limit) {
+          var end = (off + chunkSize) > limit ? limit : off + chunkSize;
+          // Never flush past a hold point. Otherwise the amount the client can
+          // have buffered would still depend on [chunkSize] — with a chunk
+          // larger than the hold offset the server would push the whole body
+          // in one write and the hold would be meaningless.
+          if (holdAt != null && off < holdAt && end > holdAt) end = holdAt;
+          req.response.add(blob.sublist(off, end));
+          await req.response.flush();
+          off = end;
+          if (holdAt != null && off >= holdAt && !held) {
+            held = true;
+            // Bounded: if the client does not cancel promptly the server
+            // resumes anyway, so a regression surfaces as "the download
+            // completed" within a couple of seconds (the same symptom CI
+            // reported) instead of hanging until the test timeout.
+            await Future.any<void>(<Future<void>>[
+              (_gates[name] ??= Completer<void>()).future,
+              Future<void>.delayed(holdTimeout),
+            ]);
+          }
+        }
+      } catch (_) {
+        // The client detached its socket while we were held — which is
+        // exactly what the cancel test asserts. Nothing to do.
+        return;
       }
       if (interrupted.contains(name) || lengthOverrides.containsKey(name)) {
         // Torn download (interrupted) or drift simulation (lengthOverride):
@@ -80,15 +133,26 @@ class _BlobServer {
   }
 
   Future<void> stop() async {
+    // Never leave a handler parked on a gate: an un-completed `holdAfter`
+    // would keep the request alive past the end of the test.
+    for (final gate in _gates.values) {
+      if (!gate.isCompleted) gate.complete();
+    }
     await _server?.close(force: true);
   }
 }
 
-/// dart:_http on Windows under flutter_test reports an uncaught
-/// "Null check operator used on a null value" from the response-stream
-/// teardown after a large 200-body is fully consumed (misattributed to
-/// `_HttpClient.getUrl`). Pre-existing (verified against the original
-/// code); linux CI and Android are unaffected.
+/// `dart:_http` reports an uncaught "Null check operator used on a null value"
+/// from response-stream teardown after a large body is fully consumed
+/// (misattributed to `_HttpClient.getUrl`). Long observed on Windows under
+/// flutter_test, and now also observed on **Linux CI** (issue #34) — so the
+/// older claim here that "linux CI and Android are unaffected" no longer holds.
+///
+/// Still guarded on Windows only, because that is where it reproduces most
+/// reliably and the guard costs real coverage on the platform we ship to. The
+/// CI occurrence is worked around in the resume test by giving each attempt its
+/// own `HttpClient` and closing it deterministically, rather than by widening
+/// this guard.
 final bool flutterTestWindowsHttpNpe = Platform.isWindows;
 
 Uint8List _ggufBlob(int size) {
@@ -215,25 +279,42 @@ void main() {
       final url = Uri.parse('$baseUrl/resume.gguf');
       final s = store();
 
-      // First attempt: torn at 50%, partial kept.
-      await expectLater(
-        s.downloadModel(url, 'resume.gguf'),
-        throwsA(isA<ModelImportException>()),
-      );
+      // Each attempt gets its own explicitly-closed client. The first attempt
+      // ends by detaching the socket of a truncated body; retrying on that
+      // same HttpClient is what trips a `dart:_http` "Null check operator used
+      // on a null value" inside `_HttpClient.getUrl` on CI (issue #34), even
+      // though `downloadModel` would otherwise allocate a fresh client.
+      final firstAttempt = HttpClient();
+      try {
+        // First attempt: torn at 50%, partial kept.
+        await expectLater(
+          s.downloadModel(url, 'resume.gguf', client: firstAttempt),
+          throwsA(isA<ModelImportException>()),
+        );
+      } finally {
+        firstAttempt.close(force: true);
+      }
       final partialLen =
           File('${sandbox.path}/resume.gguf.part').lengthSync();
 
       // Second attempt: server now serves the whole artifact.
       server.interrupted.remove('resume.gguf');
       final progressFirstCopied = <int>[];
-      final model = await s.downloadModel(
-        url,
-        'resume.gguf',
-        onProgress: (copied, total) {
-          progressFirstCopied.add(copied);
-          return true;
-        },
-      );
+      final secondAttempt = HttpClient();
+      late final ImportedModel model;
+      try {
+        model = await s.downloadModel(
+          url,
+          'resume.gguf',
+          client: secondAttempt,
+          onProgress: (copied, total) {
+            progressFirstCopied.add(copied);
+            return true;
+          },
+        );
+      } finally {
+        secondAttempt.close(force: true);
+      }
 
       expect(model.sizeBytes, blob.length);
       expect(progressFirstCopied.first, greaterThanOrEqualTo(partialLen),
@@ -252,21 +333,29 @@ void main() {
     test('cancel mid-download keeps the partial for resume', () async {
       final blob = ggufBlob(8 * 1024 * 1024);
       server.blobs['cancel.gguf'] = blob;
+      // Hold the server after a bounded prefix so the body is PROVABLY
+      // incomplete when the client cancels. Cancelling on a callback count
+      // instead raced the client's stream chunking (see [holdAfter]): CI
+      // observed the full 8388608-byte partial, i.e. the cancel never fired
+      // because all 8 MiB arrived in fewer reads than the threshold.
+      server.holdAfter['cancel.gguf'] = 128 * 1024;
       final url = Uri.parse('$baseUrl/cancel.gguf');
 
-      var calls = 0;
       await expectLater(
         store().downloadModel(
           url,
           'cancel.gguf',
-          onProgress: (copied, total) {
-            calls++;
-            return calls < 3; // cancel after a few chunks
-          },
+          // Cancel at the first opportunity. The server cannot have flushed
+          // more than the held prefix, so whatever the client has buffered is
+          // a strict prefix of the artifact — no matter how the stream was
+          // chunked.
+          onProgress: (copied, total) => false,
         ),
         throwsA(isA<ModelImportException>().having(
             (e) => e.message, 'message', 'cancelled')),
       );
+      server.release('cancel.gguf');
+
       expect(File('${sandbox.path}/cancel.gguf').existsSync(), isFalse);
       final part = File('${sandbox.path}/cancel.gguf.part');
       expect(part.existsSync(), isTrue,
